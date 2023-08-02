@@ -13,7 +13,7 @@ using Newtonsoft.Json;
 using RepoUtils;
 
 /// <summary>
-/// Foo
+/// This example shows how to import PlayFab APIs as skills.
 /// </summary>
 // ReSharper disable once InconsistentNaming
 public static class Example_00_03_OpenApiSkill_PlayFab
