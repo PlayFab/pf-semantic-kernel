@@ -11,7 +11,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel.AI.ChatCompletion;
-using Microsoft.SemanticKernel.Diagnostics;
 using Microsoft.SemanticKernel.Orchestration;
 using Microsoft.SemanticKernel.Planning.ChatStepwise;
 using Microsoft.SemanticKernel.Planning.Stepwise;
@@ -115,7 +114,7 @@ public class ChatStepwisePlanner
             string currentTime = DateTimeOffset.UtcNow.ToString("f", DateTimeFormatInfo.InvariantInfo);
             ChatHistory history = this._chatCompletion.CreateNewChat(systemPromptTemplate.Replace("{{$functionDescriptions}}", functionDescriptions).Replace("{{time.UtcNow}}", currentTime));
             foreach (FewShotExample example in fewShotExamplesTemplate)
-            {                
+            {
                 switch (example.Role)
                 {
                     case Role.User:
@@ -131,7 +130,8 @@ public class ChatStepwisePlanner
                 }
             }
 
-            history.AddUserMessage(question);
+            string gameMetadata = "The name is the game is 'My Awesome Game'. It's a 'Shooting' game created at 2021/3/3\n";
+            history.AddUserMessage(gameMetadata + question);
 
             for (int i = 0; i < this.Config.MaxIterations; i++)
             {
@@ -139,11 +139,10 @@ public class ChatStepwisePlanner
                 //this._logger?.LogDebug("Scratchpad: {ScratchPad}", scratchPad);
                 //context.Variables.Set("agentScratchPad", scratchPad);
 
-                // TODO request settings and cancellation token
                 var llmResponse = (await this._chatCompletion.GetChatCompletionsAsync(history).ConfigureAwait(false));
                 var llmResult = llmResponse.Single(); // TODO, is there a case where we get multiple messages?
                 var responseMessage = await llmResult.GetChatMessageAsync().ConfigureAwait(false);
-                
+
                 /*if (response.ErrorOccurred)
                 {
                     var exception = new PlanningException(PlanningException.ErrorCodes.UnknownError, $"Error occurred while executing stepwise plan: {llmResponse.LastErrorDescription}", llmResponse.LastException);
@@ -153,7 +152,7 @@ public class ChatStepwisePlanner
 
                 string actionText = responseMessage.Content.Trim();
                 history.AddAssistantMessage(actionText);
-                this._logger?.LogDebug("Response : {ActionText}", actionText);
+                this._logger?.LogInformation("Response : {ActionText}", actionText);
 
                 var nextStep = this.ParseResult(actionText);
                 stepsTaken.Add(nextStep);
