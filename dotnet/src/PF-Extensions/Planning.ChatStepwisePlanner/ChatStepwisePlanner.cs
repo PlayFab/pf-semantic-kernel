@@ -153,6 +153,7 @@ public class ChatStepwisePlanner
                 string actionText = responseMessage.Content.Trim();
                 history.AddAssistantMessage(actionText);
                 this._logger?.LogInformation("Response : {ActionText}", actionText);
+                await Console.Out.WriteLineAsync(actionText).ConfigureAwait(false);
 
                 var nextStep = this.ParseResult(actionText);
                 stepsTaken.Add(nextStep);
@@ -196,6 +197,8 @@ public class ChatStepwisePlanner
                     }
 
                     this._logger?.LogInformation("Observation: {Observation}", nextStep.Observation);
+                    await Console.Out.WriteLineAsync("[OBSERVATION]: " + nextStep.Observation).ConfigureAwait(false);
+
                     history.AddAssistantMessage("[OBSERVATION] " + nextStep.Observation);
                 }
                 else
