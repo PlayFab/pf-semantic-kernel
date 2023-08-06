@@ -104,7 +104,7 @@ public static partial class Example00_01_PlayFabDataQnA
 
     private static async Task RunWithQuestion(IKernel kernel, string question, bool useChatStepwisePlanner)
     {
-        kernel.ImportSkill(new GameReportFetcherSkill(kernel.Memory), "GameReportFetcher");
+        // Maybe with gpt4... kernel.ImportSkill(new GameReportFetcherSkill(kernel.Memory), "GameReportFetcher");
         kernel.ImportSkill(new InlineDataProcessorSkill(kernel.Memory), "InlineDataProcessor");
         kernel.ImportSkill(new LanguageCalculatorSkill(kernel), "advancedCalculator");
 
@@ -203,9 +203,10 @@ public static partial class Example00_01_PlayFabDataQnA
     {
         string weeklyReport = """
 The provided CSV table contains weekly aggregated data related to the user activity and retention for a gaming application on the week of August 4, 2023.
-Each row represents a different region, and the columns contain specific metrics related to user engagement.
+This data is broken down by different geographic regions, including France, Greater China, Japan, United Kingdom, United States, Latin America, India, Middle East & Africa, Germany, Canada, Western Europe, Asia Pacific, and Central & Eastern Europe.
+Each row represents a different geographic regions, and the columns contain specific metrics related to user engagement.
 Below is the description of each field in the table:
--Date: The date for which the data is recorded
+- Date: The date for which the data is recorded
 - Region: The geographic region to which the data pertains.Examples include Greater China, France, Japan, United Kingdom, United States, Latin America, India, Middle East & Africa, Germany, Canada, Western Europe, Asia Pacific, and Central & Eastern Europe.
 - MonthlyActiveUsers: The total number of unique users who engaged with the game at least once during the month
 - DailyActiveUsers: The total number of unique users who engaged with the game on August 4, 2023.
@@ -232,7 +233,7 @@ Date, Region, MonthlyActiveUsers, DailyActiveUsers, NewPlayers, Retention1Day, R
 The provided CSV table contains weekly worldwide aggregated data related to the user activity and retention for a gaming application on the week of August 4, 2023.
 There is a single row representing worldwide data, and the columns contain specific metrics related to user engagement.
 Below is the description of each field in the table:
--Date: The date for which the data is recorded
+- Date: The date for which the data is recorded
 - MonthlyActiveUsers: The total number of unique users who engaged with the game at least once during the month
 - DailyActiveUsers: The total number of unique users who engaged with the game on August 4, 2023.
 - NewPlayers: The number of new users who joined and engaged with the game on August 4, 2023.
@@ -274,22 +275,24 @@ Date, DailyActiveUsers
     public class GameReportFetcherSkill
     {
         private readonly ISemanticTextMemory _memory;
+        private readonly int _searchLimit;
 
-        public GameReportFetcherSkill(ISemanticTextMemory memory)
+        public GameReportFetcherSkill(ISemanticTextMemory memory, int searchLimit = 2)
         {
             this._memory = memory;
+            _searchLimit = searchLimit;
         }
 
         [SKFunction,
             SKName("FetchGameReport"),
             Description("Fetches the relevant comma-separated report about a game based on the provided question. This method takes a question about a game as input and retrieves the corresponding comma-separated report with relevant information about the game. The method internally processes the question to identify the appropriate report and returns it as a string")]
         public async Task<string> FetchGameReportAsync(
-        [Description("he question related to the game report.")]
+        [Description("The question related to the game report.")]
         string question,
             SKContext context)
         {
             StringBuilder stringBuilder = new StringBuilder();
-            var memories = _memory.SearchAsync("TitleID-Reports", question, limit: 1, minRelevanceScore: 0.65);
+            var memories = _memory.SearchAsync("TitleID-Reports", question, limit: _searchLimit, minRelevanceScore: 0.65);
             await foreach (MemoryQueryResult memory in memories)
             {
                 stringBuilder.AppendLine(memory.Metadata.Text);
@@ -457,7 +460,7 @@ simply output the final script below without any additional explanations.
             SKContext context)
         {
             SKContext skContext = context.Clone();
-            string csvData = await new GameReportFetcherSkill(_memory).FetchGameReportAsync(question, skContext);
+            string csvData = await new GameReportFetcherSkill(_memory, 1).FetchGameReportAsync(question, skContext);
             skContext.Variables.TryAdd("inlineData", csvData);
 
             string ret = await GetAnswerFromInlineDataAsync(question, csvData, skContext);
