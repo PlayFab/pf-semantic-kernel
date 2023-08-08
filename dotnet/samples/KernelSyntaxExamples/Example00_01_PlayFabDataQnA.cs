@@ -1,7 +1,6 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
@@ -14,14 +13,9 @@ using Microsoft.SemanticKernel.Orchestration;
 using Microsoft.SemanticKernel.Planning;
 using Microsoft.SemanticKernel.Reliability;
 using Microsoft.SemanticKernel.SkillDefinition;
-using Microsoft.SemanticKernel.Skills.Web;
-using Microsoft.SemanticKernel.Skills.Web.Bing;
-using NCalcSkills;
 using RepoUtils;
-using System.Linq;
-using Microsoft.Extensions.Logging;
 
-public enum PlannerType 
+public enum PlannerType
 {
     Stepwise,
     ChatStepwise,
@@ -35,106 +29,57 @@ public static partial class Example00_01_PlayFabDataQnA
     {
         string[] questions = new string[]
         {
-            "If the number of monthly active players in France increases by 30%, what would be the percentage increase to the overall monthly active players?  ",
+            "Is my daily active users better or worse than it was last week?",
+            "If the number of monthly active players in France increases by 30%, what would be the percentage increase to the overall monthly active players?",
             "How many players played my game yesterday?",
             "What is the average number of players I had last week excluding Friday and Monday?",
-            "Is my retention rates worldwide are reasonable for games in my domain?"
+            "Is my game doing better in USA or in China?"
         };
 
-        foreach (var question in questions)
+        PlannerType[] planners = new[]
         {
-            await Console.Out.WriteLineAsync("--------------------------------------------------------------------------------------------------------------------");
-            await Console.Out.WriteLineAsync("Question: " + question);
-            await Console.Out.WriteLineAsync("--------------------------------------------------------------------------------------------------------------------");
+            // PlannerType.Stepwise,
+            // PlannerType.ChatStepwise,
+            PlannerType.SimpleAction
+        };
 
-            // IKernel kernel = GetKernel(true);
-            // var func = kernel.ImportSkill(new GameQuestionsAnsweringSkill(kernel), "AnswerQuestionAboutGameAndPlayers");
-            // SKContext result = await kernel.RunAsync(question);
-            // await Console.Out.WriteLineAsync(result.Result);
+        foreach (string question in questions)
+        {
+            foreach (PlannerType planner in planners)
+            {
+                await Console.Out.WriteLineAsync("--------------------------------------------------------------------------------------------------------------------");
+                await Console.Out.WriteLineAsync("Planner: " + planner);
+                await Console.Out.WriteLineAsync("Question: " + question);
+                await Console.Out.WriteLineAsync("--------------------------------------------------------------------------------------------------------------------");
 
-            /*try
-            {
-                await RunTextCompletion(question);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-            }
+                IKernel kernel = await GetKernelAsync();
 
-            try
-            {
-                await RunBaseChatCompletion(question);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-            }*/
-
-            /*try
-            {
-                await RunNewChatCompletion(question);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-            }*/
-
-            try
-            {
-                await RunSinglePlanCompletion(question);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
+                try
+                {
+                    await RunWithQuestion(kernel, question, PlannerType.SimpleAction);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                }
             }
         }
     }
 
-    private static async Task RunSinglePlanCompletion(string question)
-    {
-        Console.WriteLine("RunNewChatCompletion");
-        var kernel = GetKernel(true);
-        await RunWithQuestion(kernel, question, PlannerType.SimpleAction);
-    }
-
-    private static async Task RunTextCompletion(string question)
-    {
-        Console.WriteLine("RunTextCompletion");
-        var kernel = GetKernel();
-        await RunWithQuestion(kernel, question, PlannerType.Stepwise);
-    }
-
-    private static async Task RunBaseChatCompletion(string question)
-    {
-        Console.WriteLine("RunBaseChatCompletion");
-        var kernel = GetKernel(true);
-        await RunWithQuestion(kernel, question, PlannerType.Stepwise);
-    }
-
-    private static async Task RunNewChatCompletion(string question)
-    {
-        Console.WriteLine("RunNewChatCompletion");
-        var kernel = GetKernel(true);
-        await RunWithQuestion(kernel, question, PlannerType.ChatStepwise);
-    }
-
     private static async Task RunWithQuestion(IKernel kernel, string question, PlannerType plannerType)
     {
-        // Maybe with gpt4... kernel.ImportSkill(new GameReportFetcherSkill(kernel.Memory), "GameReportFetcher");
         kernel.ImportSkill(new InlineDataProcessorSkill(kernel.Memory), "InlineDataProcessor");
-        // kernel.ImportSkill(new LanguageCalculatorSkill(kernel), "advancedCalculator");
 
-        // More skills to add:
+        // Maybe with gpt4 we can add more skills and make them more granular. Planners are instable with Gpt3.5 and complex analytic stesps.
+        // kernel.ImportSkill(new GameReportFetcherSkill(kernel.Memory), "GameReportFetcher");
+        // kernel.ImportSkill(new LanguageCalculatorSkill(kernel), "advancedCalculator");
         // var bingConnector = new BingConnector(TestConfiguration.Bing.ApiKey);
         // var webSearchEngineSkill = new WebSearchEngineSkill(bingConnector);
         // kernel.ImportSkill(webSearchEngineSkill, "WebSearch");
         // kernel.ImportSkill(new SimpleCalculatorSkill(kernel), "basicCalculator");
         // kernel.ImportSkill(new TimeSkill(), "time");
 
-        Console.WriteLine("*****************************************************");
-        Console.WriteLine("Question: " + question);
         Plan plan;
-
         Stopwatch sw = Stopwatch.StartNew();
         if (plannerType == PlannerType.SimpleAction)
         {
@@ -184,21 +129,23 @@ public static partial class Example00_01_PlayFabDataQnA
         Console.WriteLine("*****************************************************");
     }
 
-    private static IKernel GetKernel(bool useChat = false)
+    private static async Task<IKernel> GetKernelAsync()
     {
         var builder = new KernelBuilder();
-        if (useChat)
+
+        if (!string.IsNullOrEmpty(TestConfiguration.AzureOpenAI.ChatDeploymentName))
         {
-            builder.WithAzureChatCompletionService(
+            builder = builder.WithAzureChatCompletionService(
                 TestConfiguration.AzureOpenAI.ChatDeploymentName,
                 TestConfiguration.AzureOpenAI.Endpoint,
                 TestConfiguration.AzureOpenAI.ApiKey,
                 alsoAsTextCompletion: true,
                 setAsDefault: true);
         }
-        else
+
+        if (!string.IsNullOrEmpty(TestConfiguration.AzureOpenAI.DeploymentName))
         {
-            builder.WithAzureTextCompletionService(
+            builder = builder.WithAzureTextCompletionService(
                 TestConfiguration.AzureOpenAI.DeploymentName,
                 TestConfiguration.AzureOpenAI.Endpoint,
                 TestConfiguration.AzureOpenAI.ApiKey);
@@ -220,12 +167,12 @@ public static partial class Example00_01_PlayFabDataQnA
             .Build();
 
         // We're using volotile memory, so pre-load it with data
-        InitializeMemory(kernel);
+        await InitializeMemoryAsync(kernel);
 
         return kernel;
     }
 
-    private static async Task InitializeMemory(IKernel kernel)
+    private static async Task InitializeMemoryAsync(IKernel kernel)
     {
         DateTime today = DateTime.UtcNow;
 
@@ -300,45 +247,15 @@ Date,DailyActiveUsers
             text: dauReport,
             id: "DAU_Report");
     }
+}
 
-    public class GameReportFetcherSkill
-    {
-        private readonly ISemanticTextMemory _memory;
-        private readonly int _searchLimit;
-
-        public GameReportFetcherSkill(ISemanticTextMemory memory, int searchLimit = 2)
-        {
-            this._memory = memory;
-            _searchLimit = searchLimit;
-        }
-
-        [SKFunction,
-            SKName("FetchGameReport"),
-            Description("Fetches the relevant comma-separated report about a game based on the provided question. This method takes a question about a game as input and retrieves the corresponding comma-separated report with relevant information about the game. The method internally processes the question to identify the appropriate report and returns it as a string")]
-        public async Task<string> FetchGameReportAsync(
-        [Description("The question related to the game report.")]
-        string question,
-            SKContext context)
-        {
-            StringBuilder stringBuilder = new StringBuilder();
-            var memories = _memory.SearchAsync("TitleID-Reports", question, limit: _searchLimit, minRelevanceScore: 0.65);
-            await foreach (MemoryQueryResult memory in memories)
-            {
-                stringBuilder.AppendLine(memory.Metadata.Text);
-                stringBuilder.AppendLine();
-            }
-
-            string ret = stringBuilder.ToString();
-            return ret;
-        }
-    }
-
-    public class InlineDataProcessorSkill
-    {
-        private readonly ISemanticTextMemory _memory;
-        private readonly OpenAIClient _openAIClient;
-
-        const string CreatePythonScriptSystemPrompt = @"
+public class InlineDataProcessorSkill
+{
+    #region Static Data
+    /// <summary>
+    /// The system prompt for a chat that creates python scripts to solve analytic problems
+    /// </summary>
+    private static readonly string CreatePythonScriptSystemPrompt = @"
 You're a python script programmer. 
 Once you get a question, write a Python script that loads the comma-separated (CSV) data inline (within the script) into a dataframe.
 The CSV data should not be assumed to be available in any external file.
@@ -358,7 +275,10 @@ Never attempt to calculate the MonthlyActiveUsers as a sum of DailyActiveUsers s
 
 ";
 
-        const string FixPythonScriptPrompt = @"
+    /// <summary>
+    /// The user agent prompt for fixing a python script that has runtime errors
+    /// </summary>
+    private static readonly string FixPythonScriptPrompt = @"
 The following python error has encountered while running the script above.
 Fix the script so it has no errors.
 Make the minimum changes that are required. If you need to use StringIO, make sure to import io, and then use it as io.StringIO
@@ -369,131 +289,152 @@ simply output the final script below without any additional explanations.
 
 [Fixed Script]
 ";
-        public InlineDataProcessorSkill(ISemanticTextMemory memory)
+    #endregion
+
+    #region Data Members
+    /// <summary>
+    /// The semantic memory containing relevant reports needed to solve the provided question
+    /// </summary>
+    private readonly ISemanticTextMemory _memory;
+
+    /// <summary>
+    /// An open AI client
+    /// </summary>
+    private readonly OpenAIClient _openAIClient;
+    #endregion
+
+    #region Constructor
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    /// <param name="memory">The semantic memory containing relevant reports needed to solve the provided question</param>
+    public InlineDataProcessorSkill(ISemanticTextMemory memory)
+    {
+        this._memory = memory ?? throw new ArgumentNullException(nameof(memory));
+        _openAIClient = new(
+            new Uri(TestConfiguration.AzureOpenAI.Endpoint),
+            new AzureKeyCredential(TestConfiguration.AzureOpenAI.ApiKey));
+    }
+    #endregion
+
+    #region Public Methods
+    [SKFunction,
+    SKName("GetAnswerForGameQuestion"),
+    Description("Answers questions about game's data and its players around engagement, usage, time spent and game analytics")]
+    public async Task<string> GetAnswerForGameQuestionAsync(
+    [Description("The question related to the provided inline data.")]
+            string question,
+    SKContext context)
+    {
+        StringBuilder stringBuilder = new();
+        var memories = _memory.SearchAsync("TitleID-Reports", question, limit: 2, minRelevanceScore: 0.65);
+        int idx = 1;
+        await foreach (MemoryQueryResult memory in memories)
         {
-            this._memory = memory ?? throw new ArgumentNullException(nameof(memory));
-            _openAIClient = new(
-                new Uri(TestConfiguration.AzureOpenAI.Endpoint),
-                new AzureKeyCredential(TestConfiguration.AzureOpenAI.ApiKey));
+            stringBuilder.AppendLine($"[Input CSV {idx++}]");
+            stringBuilder.AppendLine(memory.Metadata.Text);
+            stringBuilder.AppendLine();
         }
 
+        string csvData = stringBuilder.ToString();
+        string ret = await CreateAndExcecutePythonScript(question, csvData);
+        return ret;
+    }
+    #endregion
 
-        //  [SKFunction,
-        //     SKName("GetAnswerFromInlineData"),
-        //    Description("Processes inline comma-separated data and returns an answer to the given question. The inlineData should be properly formatted so that it can be parsed and used to derive the answer. The method does not read from files\n or external sources; instead, it expects the data to be directly passed as a string.")]
-        public async Task<string> GetAnswerFromInlineDataAsync(
-            [Description("The question related to the provided inline data.")]
-            string question,
-            [Description("Comma-separated data as a string with first row as a header. The data should be in a format suitable for processing the question.")]
-            string inlineData)
+    #region Private Methods
+    /// <summary>
+    /// Creates and executes a python script to get an answer for an analytic question
+    /// </summary>
+    /// <param name="question">The analytic question</param>
+    /// <param name="inlineData">The data that can be used to answer the given question (e.g: can be list of CSV reports)</param>
+    /// <returns>The final answer</returns>
+    private async Task<string> CreateAndExcecutePythonScript(string question, string inlineData)
+    {
+        DateTime today = DateTime.UtcNow;
+
+        var chatCompletion = new ChatCompletionsOptions()
         {
-            DateTime today = DateTime.UtcNow;
-
-            var chatCompletion = new ChatCompletionsOptions()
-            {
-                Messages =
+            Messages =
                 {
                     new ChatMessage(ChatRole.System, CreatePythonScriptSystemPrompt.Replace("{{$inlineData}}", inlineData)),
                     new ChatMessage(ChatRole.User, question + "\nPrint facts and calculations that lead to this answer\n[Python Script]")
                 },
-                Temperature = 0.1f,
-                MaxTokens = 15000,
-                NucleusSamplingFactor = 1f,
-                FrequencyPenalty = 0,
-                PresencePenalty = 0,
+            Temperature = 0.1f,
+            MaxTokens = 15000,
+            NucleusSamplingFactor = 1f,
+            FrequencyPenalty = 0,
+            PresencePenalty = 0,
+        };
+
+        Response<ChatCompletions> response = await this._openAIClient.GetChatCompletionsAsync(
+            deploymentOrModelName: TestConfiguration.AzureOpenAI.ChatDeploymentName, chatCompletion);
+
+        // Path to the Python executable
+        string pythonPath = "python"; // Use "python3" if on a Unix-like system
+
+        int retry = 0;
+        while (retry++ < 3)
+        {
+            // Inline Python script
+            string pythonScript = response.Value.Choices[0].Message.Content;
+            if (!pythonScript.Contains("import io"))
+            {
+                pythonScript = "import io\n\n" + pythonScript;
+            }
+
+            pythonScript = pythonScript
+                .Trim("```python")
+                .Trim("```")
+                .Replace("\"", "\\\"")  // Quote so we can run python via commandline 
+                .Replace("pd.compat.StringIO(", "io.StringIO("); // Fix common script mistake
+
+
+            // Create a ProcessStartInfo and set the required properties
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = pythonPath,
+                Arguments = "-c \"" + pythonScript + "\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
             };
 
-            Response<ChatCompletions> response = await this._openAIClient.GetChatCompletionsAsync(
-                deploymentOrModelName: TestConfiguration.AzureOpenAI.ChatDeploymentName, chatCompletion);
+            // Create a new Process
+            using Process process = new() { StartInfo = startInfo };
 
-            // Path to the Python executable
-            string pythonPath = "python"; // Use "python3" if on a Unix-like system
+            // Start the Python process
+            process.Start();
 
-            int retry = 0;
-            while (retry++ < 3)
+            // Read the Python process output and error
+            string output = process.StandardOutput.ReadToEnd().Trim();
+            string error = process.StandardError.ReadToEnd().Trim();
+
+
+            // Wait for the process to finish
+            process.WaitForExit();
+
+            // If there are errors in the script, try to fix them
+            if (!string.IsNullOrEmpty(error))
             {
-                // Inline Python script
-                string pythonScript = response.Value.Choices[0].Message.Content;
-                if (!pythonScript.Contains("import io"))
-                {
-                    pythonScript = "import io\n\n" + pythonScript;
-                }
+                Console.WriteLine("Error in script: " + error);
+                chatCompletion.Messages.Add(new ChatMessage(ChatRole.Assistant, pythonScript));
+                chatCompletion.Messages.Add(new ChatMessage(ChatRole.User, FixPythonScriptPrompt.Replace("{{$error}}", error)));
 
-                pythonScript = pythonScript
-                    .Trim("```python")
-                    .Trim("```")
-                    .Replace("\"", "\\\"")  // Quote so we can run python via commandline 
-                    .Replace("pd.compat.StringIO(", "io.StringIO("); // Fix common script mistake
-
-
-                // Create a ProcessStartInfo and set the required properties
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = pythonPath,
-                    Arguments = "-c \"" + pythonScript + "\"",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                // Create a new Process
-                using Process process = new() { StartInfo = startInfo };
-
-                // Start the Python process
-                process.Start();
-
-                // Read the Python process output and error
-                string output = process.StandardOutput.ReadToEnd().Trim();
-                string error = process.StandardError.ReadToEnd().Trim();
-
-
-                // Wait for the process to finish
-                process.WaitForExit();
-
-                // If there are errors in the script, try to fix them
-                if (!string.IsNullOrEmpty(error))
-                {
-                    Console.WriteLine("Error in script: " + error);
-                    chatCompletion.Messages.Add(new ChatMessage(ChatRole.Assistant, pythonScript));
-                    chatCompletion.Messages.Add(new ChatMessage(ChatRole.User, FixPythonScriptPrompt.Replace("{{$error}}", error)));
-
-                    response = await this._openAIClient.GetChatCompletionsAsync(
-                        deploymentOrModelName: TestConfiguration.AzureOpenAI.ChatDeploymentName, chatCompletion);
-                }
-                else
-                {
-                    return output;
-                }
+                response = await this._openAIClient.GetChatCompletionsAsync(
+                    deploymentOrModelName: TestConfiguration.AzureOpenAI.ChatDeploymentName, chatCompletion);
             }
-
-            return "Couldn't get an answer";
+            else
+            {
+                return output;
+            }
         }
 
-
-        [SKFunction,
-            SKName("GetAnswerForGameQuestion"),
-            Description("Answers questions about game's data and its players around engagement, usage, time spent and game analytics")]
-        public async Task<string> GetAnswerForGameQuestionAsync(
-            [Description("The question related to the provided inline data.")]
-            string question,
-            SKContext context)
-        {
-            StringBuilder stringBuilder = new StringBuilder();
-            var memories = _memory.SearchAsync("TitleID-Reports", question, limit: 2, minRelevanceScore: 0.65);
-            int idx = 1;
-            await foreach (MemoryQueryResult memory in memories)
-            {
-                stringBuilder.AppendLine($"[Input CSV {idx++}]");
-                stringBuilder.AppendLine(memory.Metadata.Text);
-                stringBuilder.AppendLine();
-            }
-
-            string csvData = stringBuilder.ToString();
-            string ret = await GetAnswerFromInlineDataAsync(question, csvData);
-            return ret;
-        }
+        return "Couldn't get an answer";
     }
+
+    #endregion
 }
 
 public static class StringHelper
