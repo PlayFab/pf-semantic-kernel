@@ -6,6 +6,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Threading.Tasks;
+using Azure.AI.OpenAI;
+using Azure;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.Orchestration;
@@ -16,10 +18,15 @@ using Microsoft.SemanticKernel.Skills.Web;
 using Microsoft.SemanticKernel.Skills.Web.Bing;
 using NCalcSkills;
 using RepoUtils;
+using System.Linq;
+using Microsoft.Extensions.Logging;
 
-/**
- * This example shows how to use Stepwise Planner to create a plan for a given goal.
- */
+public enum PlannerType 
+{
+    Stepwise,
+    ChatStepwise,
+    SimpleAction
+}
 
 // ReSharper disable once InconsistentNaming
 public static partial class Example00_01_PlayFabDataQnA
@@ -28,7 +35,7 @@ public static partial class Example00_01_PlayFabDataQnA
     {
         string[] questions = new string[]
         {
-            "If my number of players increases 30% overall in France, would be the impact over the overall number of monthly active players? Explain how you calculated that",
+            "If the number of monthly active players in France increases by 30%, what would be the percentage increase to the overall monthly active players?  ",
             "How many players played my game yesterday?",
             "What is the average number of players I had last week excluding Friday and Monday?",
             "Is my retention rates worldwide are reasonable for games in my domain?"
@@ -63,9 +70,18 @@ public static partial class Example00_01_PlayFabDataQnA
                 Console.WriteLine(e);
             }*/
 
-            try
+            /*try
             {
                 await RunNewChatCompletion(question);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }*/
+
+            try
+            {
+                await RunSinglePlanCompletion(question);
             }
             catch (Exception e)
             {
@@ -74,37 +90,44 @@ public static partial class Example00_01_PlayFabDataQnA
         }
     }
 
+    private static async Task RunSinglePlanCompletion(string question)
+    {
+        Console.WriteLine("RunNewChatCompletion");
+        var kernel = GetKernel(true);
+        await RunWithQuestion(kernel, question, PlannerType.SimpleAction);
+    }
+
     private static async Task RunTextCompletion(string question)
     {
         Console.WriteLine("RunTextCompletion");
         var kernel = GetKernel();
-        await RunWithQuestion(kernel, question, false);
+        await RunWithQuestion(kernel, question, PlannerType.Stepwise);
     }
 
     private static async Task RunBaseChatCompletion(string question)
     {
         Console.WriteLine("RunBaseChatCompletion");
         var kernel = GetKernel(true);
-        await RunWithQuestion(kernel, question, false);
+        await RunWithQuestion(kernel, question, PlannerType.Stepwise);
     }
 
     private static async Task RunNewChatCompletion(string question)
     {
         Console.WriteLine("RunNewChatCompletion");
         var kernel = GetKernel(true);
-        await RunWithQuestion(kernel, question, true);
+        await RunWithQuestion(kernel, question, PlannerType.ChatStepwise);
     }
 
-    private static async Task RunWithQuestion(IKernel kernel, string question, bool useChatStepwisePlanner)
+    private static async Task RunWithQuestion(IKernel kernel, string question, PlannerType plannerType)
     {
         // Maybe with gpt4... kernel.ImportSkill(new GameReportFetcherSkill(kernel.Memory), "GameReportFetcher");
         kernel.ImportSkill(new InlineDataProcessorSkill(kernel.Memory), "InlineDataProcessor");
-        kernel.ImportSkill(new LanguageCalculatorSkill(kernel), "advancedCalculator");
+        // kernel.ImportSkill(new LanguageCalculatorSkill(kernel), "advancedCalculator");
 
         // More skills to add:
-        var bingConnector = new BingConnector(TestConfiguration.Bing.ApiKey);
-        var webSearchEngineSkill = new WebSearchEngineSkill(bingConnector);
-        kernel.ImportSkill(webSearchEngineSkill, "WebSearch");
+        // var bingConnector = new BingConnector(TestConfiguration.Bing.ApiKey);
+        // var webSearchEngineSkill = new WebSearchEngineSkill(bingConnector);
+        // kernel.ImportSkill(webSearchEngineSkill, "WebSearch");
         // kernel.ImportSkill(new SimpleCalculatorSkill(kernel), "basicCalculator");
         // kernel.ImportSkill(new TimeSkill(), "time");
 
@@ -113,7 +136,12 @@ public static partial class Example00_01_PlayFabDataQnA
         Plan plan;
 
         Stopwatch sw = Stopwatch.StartNew();
-        if (useChatStepwisePlanner)
+        if (plannerType == PlannerType.SimpleAction)
+        {
+            var planner = new ActionPlanner(kernel);
+            plan = await planner.CreatePlanAsync(question);
+        }
+        else if (plannerType == PlannerType.ChatStepwise)
         {
             var plannerConfig = new Microsoft.SemanticKernel.Planning.Stepwise.StepwisePlannerConfig();
             plannerConfig.ExcludedFunctions.Add("TranslateMathProblem");
@@ -124,7 +152,7 @@ public static partial class Example00_01_PlayFabDataQnA
 
             plan = planner.CreatePlan(question);
         }
-        else
+        else if (plannerType == PlannerType.Stepwise)
         {
             var plannerConfig = new Microsoft.SemanticKernel.Planning.Stepwise.StepwisePlannerConfig();
             plannerConfig.ExcludedFunctions.Add("TranslateMathProblem");
@@ -135,7 +163,12 @@ public static partial class Example00_01_PlayFabDataQnA
 
             plan = planner.CreatePlan(question);
         }
-        var result = await plan.InvokeAsync(kernel.CreateNewContext());
+        else
+        {
+            throw new NotSupportedException($"[{plannerType}] Planner type is not supported.");
+        }
+
+        SKContext result = await plan.InvokeAsync(kernel.CreateNewContext());
         Console.WriteLine("Result: " + result);
         if (result.Variables.TryGetValue("stepCount", out string? stepCount))
         {
@@ -240,16 +273,16 @@ Date,MonthlyActiveUsers,DailyActiveUsers,NewPlayers,Retention1Day,Retention7Day
 
         string dauReport = $"""
 The provided CSV table contains daily data related to the user activity and game faily active users(DAU) for the last eight days.Each row represents the number of unique users in that day:
-Date, DailyActiveUsers
-{ today:yyyy/MM/dd},5772155
-{ today.AddDays(-1):yyyy/MM/dd},5762155
-{ today.AddDays(-2):yyyy/MM/dd},5764155
-{ today.AddDays(-3):yyyy/MM/dd},5765155
-{ today.AddDays(-4):yyyy/MM/dd},5765125
-{ today.AddDays(-5):yyyy/MM/dd},5465155
-{ today.AddDays(-6):yyyy/MM/dd},4865155
-{ today.AddDays(-7):yyyy/MM/dd},4864155
-{ today.AddDays(-8):yyyy/MM/dd},4565255
+Date,DailyActiveUsers
+{today:yyyy/MM/dd},5772155
+{today.AddDays(-1):yyyy/MM/dd},5762155
+{today.AddDays(-2):yyyy/MM/dd},5764155
+{today.AddDays(-3):yyyy/MM/dd},5765155
+{today.AddDays(-4):yyyy/MM/dd},5765125
+{today.AddDays(-5):yyyy/MM/dd},5465155
+{today.AddDays(-6):yyyy/MM/dd},4865155
+{today.AddDays(-7):yyyy/MM/dd},4864155
+{today.AddDays(-8):yyyy/MM/dd},4565255
 """;
 
         await kernel.Memory.SaveInformationAsync(
@@ -302,63 +335,46 @@ Date, DailyActiveUsers
 
     public class InlineDataProcessorSkill
     {
-        private readonly ISKFunction _createPythonScriptFunction;
-        private readonly ISKFunction _fixPythonScriptFunction;
         private readonly ISemanticTextMemory _memory;
+        private readonly OpenAIClient _openAIClient;
 
-        public InlineDataProcessorSkill(ISemanticTextMemory memory)
-        {
-            this._memory = memory ?? throw new ArgumentNullException(nameof(memory));
-            IKernel kernel = new KernelBuilder()
-                .WithAzureTextCompletionService(
-                    "code-davinci-002", // Optimized model for python code generation
-                    TestConfiguration.AzureOpenAI.Endpoint,
-                    TestConfiguration.AzureOpenAI.ApiKey,
-                    setAsDefault: true)
-                .WithLogger(ConsoleLogger.Logger)
-                .Configure(c => c.SetDefaultHttpRetryConfig(new HttpRetryConfig
-                {
-                    MaxRetryCount = 3,
-                    UseExponentialBackoff = true,
-                    MinRetryDelay = TimeSpan.FromSeconds(3),
-                }))
-                .Build();
-
-            const string CreatePythonScriptPrompt = @"
-Create a Python script that loads the comma-separated (CSV) data inline (within the script) into a dataframe.
+        const string CreatePythonScriptSystemPrompt = @"
+You're a python script programmer. 
+Once you get a question, write a Python script that loads the comma-separated (CSV) data inline (within the script) into a dataframe.
 The CSV data should not be assumed to be available in any external file.
-The script should attempt to answer the provided question and print the output to the console.
+Only load the data from [Input CSV]. do not attempt to initialize the data frame with any additional rows.
+The script should:
+- Attempt to answer the provided question and print the output to the console as a user-friendly answer.
+- Print facts and calculations that lead to this answer
+- Import any necessary modules within the script (e.g., import datetime if used)
+- If the script needs to use StringIO, it should import io, and then use it as io.StringIO (To avoid this error: module 'pandas.compat' has no attribute 'StringIO')
 The script can use one or more of the provided inline scripts and should favor the ones relevant to the question.
-Import any necessary modules within the script (e.g., import datetime if used).
-If you need to use StringIO, make sure to import io, and then use it as io.StringIO (To avoid this error: module 'pandas.compat' has no attribute 'StringIO')
-simply output the final script below without any additional explanations.
 
-[Question]
-{{$question}}
+Simply output the final script below without anything beside the code and its inline documentation.
+Never attempt to calculate the MonthlyActiveUsers as a sum of DailyActiveUsers since DailyActiveUsers only gurantees the user uniqueness within a single day
 
 [Input CSV]
 {{$inlineData}}
 
-[Result Python Script]
 ";
 
-            _createPythonScriptFunction = kernel.CreateSemanticFunction(CreatePythonScriptPrompt, maxTokens: 3000, temperature: 0.1);
-
-            const string FixPythonScriptPrompt = @"
-The following python script has encountered an error provided below.
+        const string FixPythonScriptPrompt = @"
+The following python error has encountered while running the script above.
 Fix the script so it has no errors.
 Make the minimum changes that are required. If you need to use StringIO, make sure to import io, and then use it as io.StringIO
 simply output the final script below without any additional explanations.
-
-[Python Script]
-{{$script}}
 
 [Error]
 {{$error}}
 
 [Fixed Script]
 ";
-            _fixPythonScriptFunction = kernel.CreateSemanticFunction(FixPythonScriptPrompt, maxTokens: 3000, temperature: 0.1);
+        public InlineDataProcessorSkill(ISemanticTextMemory memory)
+        {
+            this._memory = memory ?? throw new ArgumentNullException(nameof(memory));
+            _openAIClient = new(
+                new Uri(TestConfiguration.AzureOpenAI.Endpoint),
+                new AzureKeyCredential(TestConfiguration.AzureOpenAI.ApiKey));
         }
 
 
@@ -369,12 +385,26 @@ simply output the final script below without any additional explanations.
             [Description("The question related to the provided inline data.")]
             string question,
             [Description("Comma-separated data as a string with first row as a header. The data should be in a format suitable for processing the question.")]
-            string inlineData,
-            SKContext context)
+            string inlineData)
         {
             DateTime today = DateTime.UtcNow;
 
-            var result = await _createPythonScriptFunction.InvokeAsync(context);
+            var chatCompletion = new ChatCompletionsOptions()
+            {
+                Messages =
+                {
+                    new ChatMessage(ChatRole.System, CreatePythonScriptSystemPrompt.Replace("{{$inlineData}}", inlineData)),
+                    new ChatMessage(ChatRole.User, question + "\nPrint facts and calculations that lead to this answer\n[Python Script]")
+                },
+                Temperature = 0.1f,
+                MaxTokens = 15000,
+                NucleusSamplingFactor = 1f,
+                FrequencyPenalty = 0,
+                PresencePenalty = 0,
+            };
+
+            Response<ChatCompletions> response = await this._openAIClient.GetChatCompletionsAsync(
+                deploymentOrModelName: TestConfiguration.AzureOpenAI.ChatDeploymentName, chatCompletion);
 
             // Path to the Python executable
             string pythonPath = "python"; // Use "python3" if on a Unix-like system
@@ -383,8 +413,7 @@ simply output the final script below without any additional explanations.
             while (retry++ < 3)
             {
                 // Inline Python script
-                string pythonScript = result.Result;
-
+                string pythonScript = response.Value.Choices[0].Message.Content;
                 if (!pythonScript.Contains("import io"))
                 {
                     pythonScript = "import io\n\n" + pythonScript;
@@ -395,7 +424,7 @@ simply output the final script below without any additional explanations.
                     .Trim("```")
                     .Replace("\"", "\\\"")  // Quote so we can run python via commandline 
                     .Replace("pd.compat.StringIO(", "io.StringIO("); // Fix common script mistake
-                
+
 
                 // Create a ProcessStartInfo and set the required properties
                 var startInfo = new ProcessStartInfo
@@ -426,10 +455,11 @@ simply output the final script below without any additional explanations.
                 if (!string.IsNullOrEmpty(error))
                 {
                     Console.WriteLine("Error in script: " + error);
-                    SKContext retryContext = context.Clone();
-                    retryContext.Variables.TryAdd("script", pythonScript);
-                    retryContext.Variables.TryAdd("error", error);
-                    result = await _fixPythonScriptFunction.InvokeAsync(retryContext);
+                    chatCompletion.Messages.Add(new ChatMessage(ChatRole.Assistant, pythonScript));
+                    chatCompletion.Messages.Add(new ChatMessage(ChatRole.User, FixPythonScriptPrompt.Replace("{{$error}}", error)));
+
+                    response = await this._openAIClient.GetChatCompletionsAsync(
+                        deploymentOrModelName: TestConfiguration.AzureOpenAI.ChatDeploymentName, chatCompletion);
                 }
                 else
                 {
@@ -449,11 +479,18 @@ simply output the final script below without any additional explanations.
             string question,
             SKContext context)
         {
-            SKContext skContext = context.Clone();
-            string csvData = await new GameReportFetcherSkill(_memory, 2).FetchGameReportAsync(question, skContext);
-            skContext.Variables.TryAdd("inlineData", csvData);
+            StringBuilder stringBuilder = new StringBuilder();
+            var memories = _memory.SearchAsync("TitleID-Reports", question, limit: 2, minRelevanceScore: 0.65);
+            int idx = 1;
+            await foreach (MemoryQueryResult memory in memories)
+            {
+                stringBuilder.AppendLine($"[Input CSV {idx++}]");
+                stringBuilder.AppendLine(memory.Metadata.Text);
+                stringBuilder.AppendLine();
+            }
 
-            string ret = await GetAnswerFromInlineDataAsync(question, csvData, skContext);
+            string csvData = stringBuilder.ToString();
+            string ret = await GetAnswerFromInlineDataAsync(question, csvData);
             return ret;
         }
     }
