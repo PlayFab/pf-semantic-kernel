@@ -120,7 +120,6 @@ public class StepwisePlanner : IStepwisePlanner
 
                 string actionText = llmResponse.Result.Trim();
                 this._logger?.LogTrace("Response: {ActionText}", actionText);
-                await Console.Out.WriteLineAsync(actionText).ConfigureAwait(false);
 
                 var nextStep = this.ParseResult(actionText);
                 stepsTaken.Add(nextStep);
@@ -168,7 +167,6 @@ public class StepwisePlanner : IStepwisePlanner
                     }
 
                     this._logger?.LogTrace("Observation: {Observation}", nextStep.Observation);
-                    await Console.Out.WriteLineAsync("[OBSERVATION]: " + nextStep.Observation).ConfigureAwait(false);
                 }
                 else
                 {
