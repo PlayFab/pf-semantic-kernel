@@ -6,7 +6,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Threading.Tasks;
-using System.Xml;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.Orchestration;
@@ -16,13 +15,7 @@ using Microsoft.SemanticKernel.SkillDefinition;
 using Microsoft.SemanticKernel.Skills.Web;
 using Microsoft.SemanticKernel.Skills.Web.Bing;
 using NCalcSkills;
-using NRedisStack.Search.Aggregation;
-using ProtoBuf.Reflection;
 using RepoUtils;
-using StackExchange.Redis;
-using static System.Net.Mime.MediaTypeNames;
-using static System.Runtime.InteropServices.JavaScript.JSType;
-using static Grpc.Core.Metadata;
 
 /**
  * This example shows how to use Stepwise Planner to create a plan for a given goal.
@@ -201,7 +194,9 @@ public static partial class Example00_01_PlayFabDataQnA
 
     private static async Task InitializeMemory(IKernel kernel)
     {
-        string weeklyReport = """
+        DateTime today = DateTime.UtcNow;
+
+        string weeklyReport = $"""
 The provided CSV table contains weekly aggregated data related to the user activity and retention for a gaming application on the week of August 4, 2023.
 This data is broken down by different geographic regions, including France, Greater China, Japan, United Kingdom, United States, Latin America, India, Middle East & Africa, Germany, Canada, Western Europe, Asia Pacific, and Central & Eastern Europe.
 Each row represents a different geographic regions, and the columns contain specific metrics related to user engagement.
@@ -213,7 +208,7 @@ Below is the description of each field in the table:
 - NewPlayers: The number of new users who joined and engaged with the game on August 4, 2023.
 - Retention1Day: The percentage of users who returned to the game on the day after their first engagement(August 4, 2023).
 - Retention7Day: The percentage of users who returned to the game seven days after their first engagement(August 4, 2023).
-Date, Region, MonthlyActiveUsers, DailyActiveUsers, NewPlayers, Retention1Day, Retention7Day
+Date,Region,MonthlyActiveUsers,DailyActiveUsers,NewPlayers,Retention1Day,Retention7Day
 {today:yyyy/MM/dd},Greater China,2059256,292000,37733,5.4,3.03
 {today:yyyy/MM/dd},France,975300,302497,5029,13.69,8.26
 {today:yyyy/MM/dd},Japan,965110,321652,6394,10.83,7.21
@@ -229,7 +224,7 @@ Date, Region, MonthlyActiveUsers, DailyActiveUsers, NewPlayers, Retention1Day, R
 {today:yyyy/MM/dd},Central & Eastern Europe,2674562,625276,21676,10.12,6.16
 """;
 
-        string weeklyReportWorldWide = """
+        string weeklyReportWorldWide = $"""
 The provided CSV table contains weekly worldwide aggregated data related to the user activity and retention for a gaming application on the week of August 4, 2023.
 There is a single row representing worldwide data, and the columns contain specific metrics related to user engagement.
 Below is the description of each field in the table:
@@ -238,22 +233,23 @@ Below is the description of each field in the table:
 - DailyActiveUsers: The total number of unique users who engaged with the game on August 4, 2023.
 - NewPlayers: The number of new users who joined and engaged with the game on August 4, 2023.
 - Retention1Day: The percentage of users who returned to the game on the day after their first engagement(August 4, 2023).
-- Retention7Day: The percentage of users who returned to the game seven days after their first engagement(August 4, 2023).Date, Region, MonthlyActiveUsers, DailyActiveUsers, NewPlayers, Retention1Day, Retention7Day
+- Retention7Day: The percentage of users who returned to the game seven days after their first engagement(August 4, 2023).
+Date,MonthlyActiveUsers,DailyActiveUsers,NewPlayers,Retention1Day,Retention7Day
 {today:yyyy/MM/dd},24916479,5772155,251214,9.5,5.51
 """;
 
-        string dauReport = """
+        string dauReport = $"""
 The provided CSV table contains daily data related to the user activity and game faily active users(DAU) for the last eight days.Each row represents the number of unique users in that day:
 Date, DailyActiveUsers
-{ today: :yyyy/MM/dd},5772155
-{ today.AddDays(-1)::yyyy/MM/dd},5762155
-{ today.AddDays(-2)::yyyy/MM/dd},5764155
-{ today.AddDays(-3)::yyyy/MM/dd},5765155
-{ today.AddDays(-4)::yyyy/MM/dd},5765125
-{ today.AddDays(-5)::yyyy/MM/dd},5465155
-{ today.AddDays(-6)::yyyy/MM/dd},4865155
-{ today.AddDays(-7)::yyyy/MM/dd},4864155
-{ today.AddDays(-8)::yyyy/MM/dd},4565255
+{ today:yyyy/MM/dd},5772155
+{ today.AddDays(-1):yyyy/MM/dd},5762155
+{ today.AddDays(-2):yyyy/MM/dd},5764155
+{ today.AddDays(-3):yyyy/MM/dd},5765155
+{ today.AddDays(-4):yyyy/MM/dd},5765125
+{ today.AddDays(-5):yyyy/MM/dd},5465155
+{ today.AddDays(-6):yyyy/MM/dd},4865155
+{ today.AddDays(-7):yyyy/MM/dd},4864155
+{ today.AddDays(-8):yyyy/MM/dd},4565255
 """;
 
         await kernel.Memory.SaveInformationAsync(
@@ -306,26 +302,20 @@ Date, DailyActiveUsers
 
     public class InlineDataProcessorSkill
     {
-        private ISKFunction _createPythonScriptFunction;
-        private ISKFunction _fixPythonScriptFunction;
-        private ISemanticTextMemory _memory;
+        private readonly ISKFunction _createPythonScriptFunction;
+        private readonly ISKFunction _fixPythonScriptFunction;
+        private readonly ISemanticTextMemory _memory;
 
         public InlineDataProcessorSkill(ISemanticTextMemory memory)
         {
-            _memory = memory;
+            this._memory = memory ?? throw new ArgumentNullException(nameof(memory));
             IKernel kernel = new KernelBuilder()
-                .WithAzureChatCompletionService(
-                    TestConfiguration.AzureOpenAI.ChatDeploymentName,
+                .WithAzureTextCompletionService(
+                    "code-davinci-002", // Optimized model for python code generation
                     TestConfiguration.AzureOpenAI.Endpoint,
                     TestConfiguration.AzureOpenAI.ApiKey,
-                    alsoAsTextCompletion: true,
                     setAsDefault: true)
                 .WithLogger(ConsoleLogger.Logger)
-                .WithAzureTextEmbeddingGenerationService(
-                    deploymentName: "text-embedding-ada-002",
-                    endpoint: TestConfiguration.AzureOpenAI.Endpoint,
-                    apiKey: TestConfiguration.AzureOpenAI.ApiKey)
-                .WithMemoryStorage(new VolatileMemoryStore())
                 .Configure(c => c.SetDefaultHttpRetryConfig(new HttpRetryConfig
                 {
                     MaxRetryCount = 3,
@@ -460,7 +450,7 @@ simply output the final script below without any additional explanations.
             SKContext context)
         {
             SKContext skContext = context.Clone();
-            string csvData = await new GameReportFetcherSkill(_memory, 1).FetchGameReportAsync(question, skContext);
+            string csvData = await new GameReportFetcherSkill(_memory, 2).FetchGameReportAsync(question, skContext);
             skContext.Variables.TryAdd("inlineData", csvData);
 
             string ret = await GetAnswerFromInlineDataAsync(question, csvData, skContext);
