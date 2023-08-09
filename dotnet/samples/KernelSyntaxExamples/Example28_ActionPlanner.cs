@@ -15,7 +15,7 @@ public static class Example28_ActionPlanner
         Console.WriteLine("======== Action Planner ========");
         var kernel = new KernelBuilder()
             .WithLogger(ConsoleLogger.Logger)
-            .WithOpenAITextCompletionService("text-davinci-002", TestConfiguration.OpenAI.ApiKey)// Note: Action Planner works with old models like text-davinci-002
+            .WithAzureTextCompletionService("text-davinci-003", TestConfiguration.AzureOpenAI.Endpoint, TestConfiguration.AzureOpenAI.ApiKey)// Note: Action Planner works with old models like text-davinci-002
             .Build();
 
         string folder = RepoFiles.SampleSkillsPath();
