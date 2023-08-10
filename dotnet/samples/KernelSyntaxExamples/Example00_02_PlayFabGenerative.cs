@@ -20,14 +20,14 @@ public static class Example00_02_PlayFabGenerative
     {
         var goals = new string[]
             {
-                "Create a segment with name NewPlayersSegment for the players first logged in date greater than 2023-08-01?",
-                "Create a segment with name LegacyPlayersSegment for the players last logged in date less than 2023-05-01?",
-                "Create a segment with name EgyptNewPlayers for the players located in the Egypt?",
+                "Create a segment with name NewPlayersSegment for the players first logged in date greater than 2023-08-01?", // Working
+                "Create a segment with name LegacyPlayersSegment for the players last logged in date less than 2023-05-01?", // Working
+                "Create a segment with name EgyptNewPlayers for the players located in the Egypt?", // Working
+                "Create a segment for china for the players logged in the last 30 days and grant them 10 virtual currency?",
                 "Create a segment with name WelcomeEgyptNewPlayers for the players located in the Egypt with entered segment action of email notification?", // With entered segment action
                 "Create a segment with name EgyptNewPlayers for the players located in the Egypt?" // If the segment already exist, create a segment with name appended with guid
             };
         await CreateSegmentExample(goals[0]);
-        //await GetSegmentsExample();
     }
 
     private static async Task CreateSegmentExample(string goal)

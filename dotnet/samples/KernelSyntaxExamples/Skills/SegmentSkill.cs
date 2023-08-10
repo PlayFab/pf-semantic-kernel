@@ -4,18 +4,14 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.IO;
 using System.Net.Http;
-using System.Text;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Azure;
 using Microsoft.SemanticKernel.Orchestration;
 using Microsoft.SemanticKernel.SkillDefinition;
 using Microsoft.SemanticKernel.Skills.OpenAPI.Authentication;
 using Microsoft.SemanticKernel.Skills.OpenAPI.Extensions;
 using Newtonsoft.Json;
 using RepoUtils;
-using System.Linq;
 
 namespace Microsoft.SemanticKernel.Skills.Core;
 
@@ -127,6 +123,5 @@ public sealed class SegmentSkill
         }
 
         return string.Empty;
-
     }
 }
