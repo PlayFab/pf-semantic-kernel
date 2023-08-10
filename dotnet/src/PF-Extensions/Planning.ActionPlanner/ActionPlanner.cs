@@ -122,7 +122,7 @@ public sealed class ActionPlanner : IActionPlanner
             }
         }
 
-        plan.Steps[0].Parameters = plan.Parameters;
+        //plan.Steps[0].Parameters = plan.Parameters;
 
         return plan;
     }
@@ -151,71 +151,75 @@ public sealed class ActionPlanner : IActionPlanner
         return list.ToString();
     }
 
-        [SKFunction, Description("List a few good examples of plans to generate")]
-        public string GoodExamples(
+    // TODO: generate string programmatically
+    // TODO: use goal to find relevant examples
+    [SKFunction, Description("List a few good examples of plans to generate")]
+    public string GoodExamples(
+        [Description("The current goal processed by the planner")] string goal,
+        SKContext context)
+    {
+        return @"
+[EXAMPLE]
+- List of functions:
+// Read a file.
+FileIOSkill.ReadAsync
+Parameter ""path"": Source file.
+// Write a file.
+FileIOSkill.WriteAsync
+Parameter ""path"": Destination file. (default value: sample.txt)
+Parameter ""content"": File content.
+// Get the current time.
+TimeSkill.Time
+No parameters.
+// Makes a POST request to a uri.
+HttpSkill.PostAsync
+Parameter ""body"": The body of the request.
+- End list of functions.
+Goal: create a file called ""something.txt"".
+{""plan"":{
+""rationale"": ""the list contains a function that allows to create files"",
+""function"": ""FileIOSkill.WriteAsync"",
+""parameters"": {
+""path"": ""something.txt"",
+""content"": null
+}}}
+#END-OF-PLAN
+";
+    }
+
+    
+        // TODO: generate string programmatically
+        [SKFunction, Description("List a few edge case examples of plans to handle")]
+        public string EdgeCaseExamples(
             [Description("The current goal processed by the planner")] string goal,
             SKContext context)
         {
             return @"
-                [EXAMPLE]
-                - List of functions:
-                // Read a file.
-                SegmentSkill.CreateSegment
-                Parameter ""segmentname"": Name of the segment.
-                Parameter ""segmentdefinition"": Name of the segment definition. Some of the examples are FirstLoginDateFilter, LastLoginDateFilter, LocationFilter.
-                Parameter ""segmentcomparison"": Name of the segment comparison. Some of the examples are GreaterThan, LessThan, Equals.
-                Parameter ""segmentcomparisonvalue"": Value of the segment comparison. Some of the examples are 2023-08-01, India, Australia, Kenya.
-                // Makes a POST request to a uri.
-                HttpSkill.PostAsync
-                Parameter ""body"": The body of the request.
-                - End list of functions.
-                Goal: Create a segment with name MySegment for the players first logged in date greater than 2023-05-01?.
-                {""plan"":{
-                ""rationale"": ""the list contains a function that allows to create segment"",
-                ""function"": ""SegmentSkill.CreateSegment"",
-                ""parameters"": {
-                ""segmentname"": ""MySegment"",
-                ""segmentdefinition"": ""FirstLoginDateFilter"",
-                ""segmentcomparison"": ""GreaterThan"",
-                ""segmentcomparisonvalue"": ""2023-05-01"",
-                ""content"": null
-                }}}
-                #END-OF-PLAN
-                ";
+    [EXAMPLE]
+    - List of functions:
+    // Get the current time.
+    TimeSkill.Time
+    No parameters.
+    // Write a file.
+    FileIOSkill.WriteAsync
+    Parameter ""path"": Destination file. (default value: sample.txt)
+    Parameter ""content"": File content.
+    // Makes a POST request to a uri.
+    HttpSkill.PostAsync
+    Parameter ""body"": The body of the request.
+    // Read a file.
+    FileIOSkill.ReadAsync
+    Parameter ""path"": Source file.
+    - End list of functions.
+    Goal: tell me a joke.
+    {""plan"":{
+    ""rationale"": ""the list does not contain functions to tell jokes or something funny"",
+    ""function"": """",
+    ""parameters"": {
+    }}}
+    #END-OF-PLAN
+    ";
         }
-    //
-    //    // TODO: generate string programmatically
-    //    [SKFunction, Description("List a few edge case examples of plans to handle")]
-    //    public string EdgeCaseExamples(
-    //        [Description("The current goal processed by the planner")] string goal,
-    //        SKContext context)
-    //    {
-    //        return @"
-    //[EXAMPLE]
-    //- List of functions:
-    //// Get the current time.
-    //TimeSkill.Time
-    //No parameters.
-    //// Write a file.
-    //FileIOSkill.WriteAsync
-    //Parameter ""path"": Destination file. (default value: sample.txt)
-    //Parameter ""content"": File content.
-    //// Makes a POST request to a uri.
-    //HttpSkill.PostAsync
-    //Parameter ""body"": The body of the request.
-    //// Read a file.
-    //FileIOSkill.ReadAsync
-    //Parameter ""path"": Source file.
-    //- End list of functions.
-    //Goal: tell me a joke.
-    //{""plan"":{
-    //""rationale"": ""the list does not contain functions to tell jokes or something funny"",
-    //""function"": """",
-    //""parameters"": {
-    //}}}
-    //#END-OF-PLAN
-    //";
-    //    }
 
     #region private ================================================================================
 

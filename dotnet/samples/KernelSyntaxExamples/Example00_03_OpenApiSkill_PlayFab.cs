@@ -27,9 +27,10 @@ public static class Example_00_03_OpenApiSkill_PlayFab
                 "Create a segment with name NewPlayersSegment for the players first logged in date greater than 2023-08-01?",
                 "Create a segment with name LegacyPlayersSegment for the players last logged in date less than 2023-05-01?",
                 "Create a segment with name EgyptNewPlayers for the players located in the Egypt?",
+                "Create a segment with name WelcomeEgyptNewPlayers for the players located in the Egypt with entered segment action of email notification?", // With entered segment action
                 "Create a segment with name EgyptNewPlayers for the players located in the Egypt?" // If the segment already exist, create a segment with name appended with guid
             };
-        await CreateSegmentExample(goals[2]);
+        await CreateSegmentExample(goals[0]);
         //await GetSegmentsExample();
     }
 
@@ -85,9 +86,10 @@ public static class Example_00_03_OpenApiSkill_PlayFab
             // The planner returns a plan, consisting of a single function
             // to execute and achieve the goal requested.
             var plan = await planner.CreatePlanAsync(goal);
+            plan.Steps[0].Parameters = plan.Parameters;
 
             // Execute the full plan (which is a single function)
-            SKContext result = await plan.InvokeAsync();
+            SKContext result = await plan.InvokeAsync(kernel2.CreateNewContext());
 
             // Show the result, which should match the given goal
             Console.WriteLine(result);
