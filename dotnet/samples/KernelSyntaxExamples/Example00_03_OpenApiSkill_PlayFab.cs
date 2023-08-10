@@ -2,9 +2,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
+using System.IO;
 using System.Net.Http;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.AI.TextCompletion;
@@ -25,19 +24,24 @@ public static class Example_00_03_OpenApiSkill_PlayFab
 {
     public static async Task RunAsync()
     {
-        // await SkillImportExample();
+        // Simple example
+        await SkillImportExample();
 
+        // Example semantic skill for generating PlayFab segments
+        await JsonExample();
+
+        // Examples for native skill calling PlayFab APIs
         string[] questions = new string[]
         {
-            // "Get the details for PlayFab segment 968016902A4DC242",
-            "Get all my PlayFab segments",
-            // "Create a segment named 'My Favorite Segment' for players who last logged in over 1 day ago",
+             "Get the details for all my PlayFab segments",
+             "Do I have a segment that filters for Canadian players?",
         };
 
         foreach (string q in questions)
         {
             try
             {
+                Console.WriteLine("Question: " + q);
                 await PlannerExample(q);
             }
             catch (Exception e)
@@ -82,26 +86,22 @@ public static class Example_00_03_OpenApiSkill_PlayFab
 
         SKContext context = kernel.CreateNewContext();
 
-        context.Variables.Set("content_type", "application/json");
-
         using HttpClient httpClient = new();
 
         var playfabApiSkills = await GetPlayFabSkill(kernel, httpClient);
-        //kernel.ImportSkill(new ExtractHexIdSkill(), "ExtractHexadecimalId");
 
         var plannerConfig = new StepwisePlannerConfig();
         plannerConfig.ExcludedFunctions.Add("TranslateMathProblem");
         plannerConfig.MinIterationTimeMs = 1500;
         plannerConfig.MaxTokens = 1000;
-        plannerConfig.MaxIterations = 5;
+        plannerConfig.MaxIterations = 10;
+
+        var settings = new CompleteRequestSettings { Temperature = 0.1, MaxTokens = 500 };
 
         StepwisePlanner planner = new(kernel, plannerConfig);
         Plan plan = planner.CreatePlan(question);
 
-        var settings = new CompleteRequestSettings { Temperature = 0.1, MaxTokens = 250 };
-        var result = await plan.InvokeAsync(context, settings);
-
-        Console.WriteLine("Question: " + question);
+        SKContext? result = await plan.InvokeAsync(context, settings);
 
         Console.WriteLine("Result: " + result);
         if (result.Variables.TryGetValue("stepCount", out string? stepCount))
@@ -113,6 +113,41 @@ public static class Example_00_03_OpenApiSkill_PlayFab
         {
             Console.WriteLine("Skills Used: " + skillCount);
         }
+    }
+
+    private static async Task JsonExample()
+    {
+        var kernel = new KernelBuilder()
+            .WithLogger(ConsoleLogger.Logger)
+            .WithAzureChatCompletionService(TestConfiguration.AzureOpenAI.ChatDeploymentName, TestConfiguration.AzureOpenAI.Endpoint, TestConfiguration.AzureOpenAI.ApiKey, alsoAsTextCompletion: true, setAsDefault: true)
+            .Build();
+
+        SKContext context = kernel.CreateNewContext();
+
+        string miniJson = await GetMinifiedOpenApiJson();
+
+        string FunctionDefinition = @"
+You are an AI assistant for generating PlayFab segment API requests. You have access to the full OpenAPI 3.0.1 specification.
+If you do not know how to answer the question, reply with 'I cannot answer this'.
+
+Api Spec:
+{{$apiSpec}}
+
+Example: How do I create a segment for Canadian players?
+Answer: To create a segment for Canadian players, you would use the `CreateSegment` API and include a LocationSegmentFilter definition with the country set to Canada.
+
+Question:
+{{$input}}".Replace("{{$apiSpec}}", miniJson, StringComparison.OrdinalIgnoreCase);
+
+        var playfabJsonFunction = kernel.CreateSemanticFunction(FunctionDefinition, temperature: 0.1, topP: 1);
+
+        string input = "How do I create a segment for Android players in Canada?";
+
+        Console.WriteLine("Question: " + input);
+
+        var result = await playfabJsonFunction.InvokeAsync(input);
+
+        Console.WriteLine("Result: " + result);
     }
 
     private static async Task<IDictionary<string, ISKFunction>> GetPlayFabSkill(IKernel kernel, HttpClient httpClient)
@@ -128,17 +163,38 @@ public static class Example_00_03_OpenApiSkill_PlayFab
         bool useLocalFile = true;
         if (useLocalFile)
         {
-            var playfabApiFile = "../../../Skills/PlayFabApiSkill/openapi.json";
+            var playfabApiFile = "../../../Skills/PlayFabApiSkill/openapi_updated.json";
             var parameters = new OpenApiSkillExecutionParameters(httpClient, authCallback: titleSecretKeyProvider.AuthenticateRequestAsync, serverUrlOverride: new Uri(TestConfiguration.PlayFab.Endpoint));
 
-            playfabApiSkills = await kernel.ImportOpenApiSkillFromFileAsync("PlayFabApiSkill", playfabApiFile, parameters); ;
+            playfabApiSkills = await kernel.ImportAIPluginAsync("PlayFabApiSkill", playfabApiFile, parameters);
         }
         else
         {
             var playfabApiRawFileUrl = new Uri(TestConfiguration.PlayFab.SwaggerEndpoint);
-            playfabApiSkills = await kernel.ImportOpenApiSkillFromUrlAsync("PlayFabApiSkill", playfabApiRawFileUrl, new OpenApiSkillExecutionParameters(httpClient, authCallback: titleSecretKeyProvider.AuthenticateRequestAsync)); ;
+            var parameters = new OpenApiSkillExecutionParameters(httpClient, authCallback: titleSecretKeyProvider.AuthenticateRequestAsync, serverUrlOverride: new Uri(TestConfiguration.PlayFab.Endpoint));
+
+            playfabApiSkills = await kernel.ImportAIPluginAsync("PlayFabApiSkill", playfabApiRawFileUrl, parameters);
         }
 
         return playfabApiSkills;
+    }
+
+    private static async Task<string> GetMinifiedOpenApiJson()
+    {
+        var playfabApiFile = "../../../Skills/PlayFabApiSkill/openapi_updated.json";
+
+        var pluginJson = string.Empty;
+
+        if (!File.Exists(playfabApiFile))
+        {
+            throw new FileNotFoundException($"Invalid URI. The specified path '{playfabApiFile}' does not exist.");
+        }
+
+        using (var sr = File.OpenText(playfabApiFile))
+        {
+            pluginJson = await sr.ReadToEndAsync().ConfigureAwait(false); //must await here to avoid stream reader being disposed before the string is read
+        }
+
+        return JsonConvert.SerializeObject(JsonConvert.DeserializeObject(pluginJson), Formatting.None);
     }
 }
