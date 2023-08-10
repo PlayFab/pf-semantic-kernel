@@ -16,14 +16,8 @@ using RepoUtils;
 namespace Microsoft.SemanticKernel.Skills.Core;
 
 /// <summary>
-/// Read and write from a file.
+/// Create a segment with given information.
 /// </summary>
-/// <example>
-/// Usage: kernel.ImportSkill("file", new FileIOSkill());
-/// Examples:
-/// {{file.readAsync $path }} => "hello world"
-/// {{file.writeAsync}}
-/// </example>
 public sealed class SegmentSkill
 {
     ContextVariables contextVariables = new ContextVariables();
@@ -116,8 +110,9 @@ public sealed class SegmentSkill
         countryCodes.Add("Australia", "AU");
         countryCodes.Add("Kenya", "KE");
         countryCodes.Add("Egypt", "EG");
+        countryCodes.Add("China", "CN");
 
-        if(countryCodes.ContainsKey(country))
+        if (countryCodes.ContainsKey(country))
         {
             return countryCodes[country];
         }
