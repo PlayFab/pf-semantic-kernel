@@ -37,7 +37,7 @@ public sealed class SegmentSkill
     {
         //ToDo: Create payload json using Playfab dlls/sdk
         // Set properties to create a Segment using swagger.json
-        ContextVariables contextVariables = new ContextVariables();
+        ContextVariables contextVariables = new();
         contextVariables.Set("content_type", "application/json");
         contextVariables.Set("server_url", TestConfiguration.PlayFab.Endpoint);
         string segmentPayload = GetSegmentPayload(segmentname, segmentdefinition, segmentcomparison, ref segmentcomparisonvalue);
