@@ -1,18 +1,12 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System;
-using System.Collections.Generic;
-using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Orchestration;
-using Microsoft.SemanticKernel.SkillDefinition;
-using Microsoft.SemanticKernel.Skills.OpenAPI.Authentication;
-using Microsoft.SemanticKernel.Skills.OpenAPI.Extensions;
-using RepoUtils;
 using Microsoft.SemanticKernel.Planning;
-using Newtonsoft.Json;
 using Microsoft.SemanticKernel.Skills.Core;
+using RepoUtils;
 
 public static class Example00_02_PlayFabGenerative
 {
@@ -32,8 +26,6 @@ public static class Example00_02_PlayFabGenerative
 
     private static async Task CreateSegmentExample(string goal)
     {
-        using HttpClient httpClient = new();
-
         // Create a segment skill
         {
             Console.WriteLine("======== Action Planner ========");
@@ -64,30 +56,5 @@ public static class Example00_02_PlayFabGenerative
             // Show the result, which should match the given goal
             Console.WriteLine(result);
         }
-    }
-
-    private static async Task<IDictionary<string, ISKFunction>> GetPlayFabSkill(IKernel kernel, HttpClient httpClient)
-    {
-        IDictionary<string, ISKFunction> playfabApiSkills;
-
-        var titleSecretKeyProvider = new PlayFabAuthenticationProvider(() =>
-        {
-            string s = TestConfiguration.PlayFab.TitleSecretKey;
-            return Task.FromResult(s);
-        });
-
-        bool useLocalFile = true;
-        if (useLocalFile)
-        {
-            var playfabApiFile = "../../../Skills/PlayFabApiSkill/openapi.json";
-            playfabApiSkills = await kernel.ImportOpenApiSkillFromFileAsync("PlayFabApiSkill", playfabApiFile, new OpenApiSkillExecutionParameters(httpClient, authCallback: titleSecretKeyProvider.AuthenticateRequestAsync));
-        }
-        else
-        {
-            var playfabApiRawFileUrl = new Uri(TestConfiguration.PlayFab.SwaggerEndpoint);
-            playfabApiSkills = await kernel.ImportOpenApiSkillFromUrlAsync("PlayFabApiSkill", playfabApiRawFileUrl, new OpenApiSkillExecutionParameters(httpClient, authCallback: titleSecretKeyProvider.AuthenticateRequestAsync));
-        }
-
-        return playfabApiSkills;
     }
 }
