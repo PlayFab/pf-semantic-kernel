@@ -14,6 +14,11 @@ using Microsoft.SemanticKernel.Planning;
 using Microsoft.SemanticKernel.Reliability;
 using Microsoft.SemanticKernel.SkillDefinition;
 using RepoUtils;
+using System.Collections.Concurrent;
+using Microsoft.Azure.Cosmos;
+using System.Threading;
+using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 
 public enum PlannerType
 {
@@ -27,6 +32,7 @@ public static partial class Example00_01_PlayFabDataQnA
 {
     public static async Task RunAsync()
     {
+        CancellationToken cancellationToken = CancellationToken.None;
         string[] questions = new string[]
         {
             "Is my daily active users better or worse than it was last week?",
@@ -52,11 +58,11 @@ public static partial class Example00_01_PlayFabDataQnA
                 await Console.Out.WriteLineAsync("Question: " + question);
                 await Console.Out.WriteLineAsync("--------------------------------------------------------------------------------------------------------------------");
 
-                IKernel kernel = await GetKernelAsync();
+                IKernel kernel = await GetKernelAsync(cancellationToken);
 
                 try
                 {
-                    await RunWithQuestion(kernel, question, PlannerType.SimpleAction);
+                    await RunWithQuestionAsync(kernel, question, PlannerType.SimpleAction, cancellationToken);
                 }
                 catch (Exception e)
                 {
@@ -66,7 +72,7 @@ public static partial class Example00_01_PlayFabDataQnA
         }
     }
 
-    private static async Task RunWithQuestion(IKernel kernel, string question, PlannerType plannerType)
+    private static async Task RunWithQuestionAsync(IKernel kernel, string question, PlannerType plannerType, CancellationToken cancellationToken)
     {
         kernel.ImportSkill(new InlineDataProcessorSkill(kernel.Memory), "InlineDataProcessor");
 
@@ -84,7 +90,7 @@ public static partial class Example00_01_PlayFabDataQnA
         if (plannerType == PlannerType.SimpleAction)
         {
             var planner = new ActionPlanner(kernel);
-            plan = await planner.CreatePlanAsync(question);
+            plan = await planner.CreatePlanAsync(question, cancellationToken);
         }
         else if (plannerType == PlannerType.ChatStepwise)
         {
@@ -113,7 +119,7 @@ public static partial class Example00_01_PlayFabDataQnA
             throw new NotSupportedException($"[{plannerType}] Planner type is not supported.");
         }
 
-        SKContext result = await plan.InvokeAsync(kernel.CreateNewContext());
+        SKContext result = await plan.InvokeAsync(kernel.CreateNewContext(), cancellationToken: cancellationToken);
         Console.WriteLine("Result: " + result);
         if (result.Variables.TryGetValue("stepCount", out string? stepCount))
         {
@@ -129,7 +135,7 @@ public static partial class Example00_01_PlayFabDataQnA
         Console.WriteLine("*****************************************************");
     }
 
-    private static async Task<IKernel> GetKernelAsync()
+    private static async Task<IKernel> GetKernelAsync(CancellationToken cancellationToken)
     {
         var builder = new KernelBuilder();
 
@@ -167,14 +173,27 @@ public static partial class Example00_01_PlayFabDataQnA
             .Build();
 
         // We're using volotile memory, so pre-load it with data
-        await InitializeMemoryAsync(kernel);
+        await InitializeMemoryAsync(kernel, cancellationToken);
 
         return kernel;
     }
 
-    private static async Task InitializeMemoryAsync(IKernel kernel)
+    private static async Task InitializeMemoryAsync(IKernel kernel, CancellationToken cancellationToken)
     {
-        DateTime today = DateTime.UtcNow;
+        DateTime today = DateTime.UtcNow.Date;
+
+        string titleId = "B343";
+        using var reportDataFetcher = new ReportDataFetcher(
+            titleId,
+            TestConfiguration.PlayFab.ReportsCosmosDBEndpoint,
+            TestConfiguration.PlayFab.ReportsCosmosDBKey,
+            TestConfiguration.PlayFab.ReportsCosmosDBDatabaseName,
+            TestConfiguration.PlayFab.ReportsCosmosDBContainerName);
+
+        IList<GameReport> reports = await reportDataFetcher.FetchByQueryAsync(
+            $"SELECT * FROM c WHERE c.TitleId='{titleId}' and c.ReportDate>='{today.AddDays(-30):yyyy-MM-dd}'",
+            cancellationToken);
+        Console.WriteLine(reports);
 
         string weeklyReport = $"""
 The provided CSV table contains weekly aggregated data related to the user activity and retention for a gaming application on the week of August 4, 2023.
@@ -367,7 +386,7 @@ simply output the final script below without any additional explanations.
             PresencePenalty = 0,
         };
 
-        Response<ChatCompletions> response = await this._openAIClient.GetChatCompletionsAsync(
+        Azure.Response<ChatCompletions> response = await this._openAIClient.GetChatCompletionsAsync(
             deploymentOrModelName: TestConfiguration.AzureOpenAI.ChatDeploymentName, chatCompletion);
 
         // Path to the Python executable
@@ -455,4 +474,90 @@ public static class StringHelper
 
         return source;
     }
+}
+
+public class ReportDataFetcher : IDisposable
+{
+    private readonly string _titleId;
+    private readonly CosmosClient _cosmosClient;
+    private readonly string _databaseName;
+    private readonly string _containerName;
+
+    public ReportDataFetcher(string titleId, string endpointUrl, string primaryKey, string databaseName, string containerName)
+    {
+        this._titleId = titleId ?? throw new ArgumentNullException(nameof(titleId));
+        this._cosmosClient = new(
+            endpointUrl ?? throw new ArgumentNullException(nameof(endpointUrl)),
+            primaryKey ?? throw new ArgumentNullException(nameof(primaryKey)));
+
+        this._databaseName = databaseName ?? throw new ArgumentNullException(nameof(databaseName));
+        this._containerName = containerName ?? throw new ArgumentNullException(nameof(containerName));
+    }
+
+    public async Task<GameReport?> FetchAsync(string documentId, CancellationToken cancellationToken)
+    {
+        // Get a reference to the database and container
+        Database database = this._cosmosClient.GetDatabase(this._databaseName);
+        Microsoft.Azure.Cosmos.Container container = database.GetContainer(this._containerName);
+
+        try
+        {
+            // Read the document by its ID
+            ItemResponse<GameReport> response = await container.ReadItemAsync<GameReport>(documentId, new PartitionKey(this._titleId), cancellationToken: cancellationToken);
+            return response.Resource;
+        }
+        catch (CosmosException ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async Task<IList<GameReport>> FetchByQueryAsync(string query, CancellationToken cancellationToken)
+    {
+        // Get a reference to the database and container
+        Database database = this._cosmosClient.GetDatabase(this._databaseName);
+        Microsoft.Azure.Cosmos.Container container = database.GetContainer(this._containerName);
+
+        List<GameReport> ret = new();
+        try
+        {
+            // Execute the query
+            QueryDefinition queryDefinition = new(query);
+            FeedIterator<dynamic> resultSetIterator = container.GetItemQueryIterator<dynamic>(queryDefinition);
+
+            while (resultSetIterator.HasMoreResults)
+            {
+                FeedResponse<dynamic> response = await resultSetIterator.ReadNextAsync(cancellationToken);
+                foreach (dynamic item in response)
+                {
+                    GameReport? gameReport = ((JObject)item).ToObject<GameReport>();
+                    if (gameReport is not null)
+                    {
+                        ret.Add(gameReport);
+                    }
+                }
+            }
+        }
+        catch (CosmosException ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            return new List<GameReport>();
+        }
+
+        return ret;
+    }
+
+    public void Dispose()
+    {
+        this._cosmosClient.Dispose();
+    }
+}
+
+public class GameReport
+{
+    public DateTime ReportDate { get; set; }
+    public string ReportId { get; set; }
+    public string ReportName { get; set; }
+    public string ReportData { get; set; }
 }
