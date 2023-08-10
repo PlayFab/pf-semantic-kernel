@@ -156,8 +156,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "pfextensions", "pfextension
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Planning.ChatStepwisePlanner", "src\PF-Extensions\Planning.ChatStepwisePlanner\Planning.ChatStepwisePlanner.csproj", "{E95FA7DF-8570-476A-B34E-3D11E42926C8}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Planning.ActionPlanner", "src\PF-Extensions\Planning.ActionPlanner\Planning.ActionPlanner.csproj", "{99CE8ACB-0C03-49BA-B4FD-A841C36623DA}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -380,12 +378,6 @@ Global
 		{E95FA7DF-8570-476A-B34E-3D11E42926C8}.Publish|Any CPU.Build.0 = Publish|Any CPU
 		{E95FA7DF-8570-476A-B34E-3D11E42926C8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E95FA7DF-8570-476A-B34E-3D11E42926C8}.Release|Any CPU.Build.0 = Release|Any CPU
-		{99CE8ACB-0C03-49BA-B4FD-A841C36623DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{99CE8ACB-0C03-49BA-B4FD-A841C36623DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{99CE8ACB-0C03-49BA-B4FD-A841C36623DA}.Publish|Any CPU.ActiveCfg = Publish|Any CPU
-		{99CE8ACB-0C03-49BA-B4FD-A841C36623DA}.Publish|Any CPU.Build.0 = Publish|Any CPU
-		{99CE8ACB-0C03-49BA-B4FD-A841C36623DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{99CE8ACB-0C03-49BA-B4FD-A841C36623DA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -441,7 +433,6 @@ Global
 		{C754950A-E16C-4F96-9CC7-9328E361B5AF} = {FA3720F1-C99A-49B2-9577-A940257098BF}
 		{776B971D-6636-4554-9E35-75C88BD24DC2} = {831DDCA2-7D2C-4C31-80DB-6BDB3E1F7AE0}
 		{E95FA7DF-8570-476A-B34E-3D11E42926C8} = {776B971D-6636-4554-9E35-75C88BD24DC2}
-		{99CE8ACB-0C03-49BA-B4FD-A841C36623DA} = {776B971D-6636-4554-9E35-75C88BD24DC2}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {FBDC56A3-86AD-4323-AA0F-201E59123B83}
