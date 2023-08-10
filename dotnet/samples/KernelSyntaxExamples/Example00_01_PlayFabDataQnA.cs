@@ -14,11 +14,12 @@ using Microsoft.SemanticKernel.Planning;
 using Microsoft.SemanticKernel.Reliability;
 using Microsoft.SemanticKernel.SkillDefinition;
 using RepoUtils;
-using System.Collections.Concurrent;
 using Microsoft.Azure.Cosmos;
 using System.Threading;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
+using System.Linq;
+using Newtonsoft.Json;
 
 public enum PlannerType
 {
@@ -35,6 +36,8 @@ public static partial class Example00_01_PlayFabDataQnA
         CancellationToken cancellationToken = CancellationToken.None;
         string[] questions = new string[]
         {
+            "Which three items had the highest total sales and which had the highest revenue generated yesterday?",
+            "When is the typical price of in-game purchases is the highest during the day and when it is the lowest?",
             "Is my daily active users better or worse than it was last week?",
             "If the number of monthly active players in France increases by 30%, what would be the percentage increase to the overall monthly active players?",
             "How many players played my game yesterday?",
@@ -190,10 +193,34 @@ public static partial class Example00_01_PlayFabDataQnA
             TestConfiguration.PlayFab.ReportsCosmosDBDatabaseName,
             TestConfiguration.PlayFab.ReportsCosmosDBContainerName);
 
-        IList<GameReport> reports = await reportDataFetcher.FetchByQueryAsync(
-            $"SELECT * FROM c WHERE c.TitleId='{titleId}' and c.ReportDate>='{today.AddDays(-30):yyyy-MM-dd}'",
+        IList<GameReport> gameReports = await reportDataFetcher.FetchByQueryAsync(
+            $"SELECT * FROM c WHERE c.TitleId='{titleId}' and c.ReportDate>='{today.AddDays(-3):yyyy-MM-dd}'",
             cancellationToken);
-        Console.WriteLine(reports);
+
+        Dictionary<string, GameReport> latestReports = gameReports
+          .GroupBy(report => report.ReportName)
+          .Select(group =>
+              group.OrderByDescending(report => report.ReportDate).First()
+          )
+          .ToDictionary(report => report.ReportName);
+
+
+
+        string dailyOverviewReport =
+            DailyOverviewReportRecord.GetDescription() + Environment.NewLine +
+            DailyOverviewReportRecord.GetHeader() + Environment.NewLine +
+            string.Join(Environment.NewLine,
+                JsonConvert.DeserializeObject<List<DailyOverviewReportRecord>>(latestReports["DailyOverviewReport"].ReportData)
+                .Select(reportData => reportData.AsCsvRow()));
+
+        string dailyTopItemsReportRecord =
+            DailyTopItemsReportRecord.GetDescription() + Environment.NewLine +
+            DailyTopItemsReportRecord.GetHeader() + Environment.NewLine +
+            string.Join(Environment.NewLine,
+                JsonConvert.DeserializeObject<List<DailyTopItemsReportRecord>>(latestReports["DailyTopItemsReport"].ReportData)
+                .Select(reportData => reportData.AsCsvRow()));
+
+
 
         string weeklyReport = $"""
 The provided CSV table contains weekly aggregated data related to the user activity and retention for a gaming application on the week of August 4, 2023.
@@ -250,6 +277,15 @@ Date,DailyActiveUsers
 {today.AddDays(-7):yyyy/MM/dd},4864155
 {today.AddDays(-8):yyyy/MM/dd},4565255
 """;
+        await kernel.Memory.SaveInformationAsync(
+            collection: "TitleID-Reports",
+            text: dailyOverviewReport,
+            id: "DailyOverviewReport");
+
+        await kernel.Memory.SaveInformationAsync(
+            collection: "TitleID-Reports",
+            text: dailyTopItemsReportRecord,
+            id: "DailyTopItemsReportRecord");
 
         await kernel.Memory.SaveInformationAsync(
             collection: "TitleID-Reports",
@@ -380,7 +416,7 @@ simply output the final script below without any additional explanations.
                     new ChatMessage(ChatRole.User, question + "\nPrint facts and calculations that lead to this answer\n[Python Script]")
                 },
             Temperature = 0.1f,
-            MaxTokens = 15000,
+            MaxTokens = 8000,
             NucleusSamplingFactor = 1f,
             FrequencyPenalty = 0,
             PresencePenalty = 0,
@@ -557,7 +593,75 @@ public class ReportDataFetcher : IDisposable
 public class GameReport
 {
     public DateTime ReportDate { get; set; }
-    public string ReportId { get; set; }
-    public string ReportName { get; set; }
-    public string ReportData { get; set; }
+    public required string ReportId { get; set; }
+    public required string ReportName { get; set; }
+    public required string ReportData { get; set; }
+}
+
+public class DailyOverviewReportRecord
+{
+    public static string GetHeader() =>
+        "Timestamp,TotalLogins,UniqueLogins,UniquePayers,Revenue,Purchases,TotalCalls,TotalSuccessfulCalls,TotalErrors,Arpu,Arppu,AvgPurchasePrice,NewUsers";
+
+    public string AsCsvRow() =>
+        $"{this.Timestamp},{this.TotalLogins},{this.UniqueLogins},{this.UniquePayers},{this.Revenue},{this.Purchases},{this.TotalCalls},{this.TotalSuccessfulCalls},{this.TotalErrors},{this.Arpu},{this.Arppu},{this.AvgPurchasePrice},{this.NewUsers}";
+
+    public static string GetDescription() =>
+        """
+        The provided CSV table contains granular daily data capturing game reports for each hour, offering valuable insights into player engagement, financial performance, and the overall gameplay experience.
+        This dataset offers a comprehensive view into player behavior, enabling data-driven decisions to enhance gameplay, optimize monetization strategies, and improve overall player satisfaction.
+        Through its hour-by-hour breakdown, it allows for precise analysis of temporal patterns, aiding in understanding player dynamics over different times of the day.
+        The report has 24 rows where every row reprsents one hour of the day.
+        Description of Columns:
+        - Timestamp: The date and time of a one-hour window when the report was compiled, presented in Coordinated Universal Time (UTC).
+        - TotalLogins: The aggregate count of player logins during the specified hour, revealing the volume of player interactions.
+        - UniqueLogins: The distinct number of players who logged into the game within the same hour, indicating individual engagement.
+        - UniquePayers: The count of unique players who conducted in-game purchases, reflecting the game's monetization reach.
+        - Revenue: The cumulative revenue in dollars generated from in-game purchases throughout the hour, demonstrating financial performance.
+        - Purchases: The total number of in-game transactions carried out by players in the specified hour.
+        - TotalCalls: The collective sum of player-initiated interactions, encompassing gameplay actions, API requests, and more..
+        - TotalSuccessfulCalls: The count of interactions that succeeded without encountering errors, highlighting player satisfaction.
+        - TotalErrors: The overall number of errors encountered during interactions, potential indicators of player experience challenges.
+        - Arpu (Average Revenue Per User): The average revenue generated per unique player, calculated as Revenue / UniquePayers.
+        - Arppu (Average Revenue Per Paying User): The average revenue generated per player who made purchases, calculated as Revenue / UniquePayers.
+        - AvgPurchasePrice: The average price of in-game purchases made by players, calculated as Revenue / Purchases.
+        - NewUsers: The count of new players who started engaging with the game during the specified hour period.
+        """;
+
+    public DateTime Timestamp { get; set; }
+    public int TotalLogins { get; set; }
+    public int UniqueLogins { get; set; }
+    public int UniquePayers { get; set; }
+    public decimal Revenue { get; set; }
+    public int Purchases { get; set; }
+    public long TotalCalls { get; set; }
+    public long TotalSuccessfulCalls { get; set; }
+    public long TotalErrors { get; set; }
+    public decimal Arpu { get; set; }
+    public decimal Arppu { get; set; }
+    public decimal AvgPurchasePrice { get; set; }
+    public int NewUsers { get; set; }
+}
+public class DailyTopItemsReportRecord
+{
+    public static string GetHeader() => "ItemName,TotalSales,TotalRevenue";
+
+    public string AsCsvRow() =>
+        $"{this.ItemName.Replace("[\\\"", "").Replace("\\\"]", "")},{this.TotalSales},{this.TotalRevenue}";
+
+    public static string GetDescription() =>
+        """
+        This dataset presents a thorough view of sales reports for a single day, capturing vital details about specific product performance and revenue generation.
+        Each entry sheds light on sales figures per product, helping decision-makers enhance strategies for growth.
+        The dataset is valuable for gauging product popularity, revenue trends, and customer engagement.
+        The provided data empowers data-driven decision-making and supports efforts to enhance product offerings and optimize sales strategies for sustained success
+        Description of Columns:
+        - ItemName: The name of the product, representing a distinct item available for purchase.
+        - TotalSales: The cumulative count of sales for the specific item, indicating its popularity and market demand.
+        - TotalRevenue: The total monetary value of revenue generated from sales of the item in US dollars.
+        """;
+
+    public string ItemName { get; set; }
+    public int TotalSales { get; set; }
+    public decimal TotalRevenue { get; set; }
 }
