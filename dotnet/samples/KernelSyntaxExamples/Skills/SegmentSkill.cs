@@ -32,7 +32,7 @@ public sealed class SegmentSkill
     public async Task<string> CreateSegment([Description("Name of the segment.")] string segmentname,
         [Description("Name of the segment definition. Some of the examples are FirstLoginDateFilter, LastLoginDateFilter, LocationFilter.")] string segmentdefinition,
         [Description("Name of the segment comparison. Some of the examples are GreaterThan, LessThan, Equals.")] string segmentcomparison,
-        [Description("Value of the segment comparison. Some of the examples are 2023-08-01, India, Australia, Kenya.")] string segmentcomparisonvalue
+        [Description("Value of the segment comparison. Some of the examples are 2023-08-01, India, Australia, Kenya. For country get 2 letter country code instead of country name.")] string segmentcomparisonvalue
         )
     {
         //ToDo: Create payload json using Playfab dlls/sdk
@@ -65,7 +65,6 @@ public sealed class SegmentSkill
 
         if (segmentdefinition == "LocationFilter")
         {
-            segmentcomparisonvalue = GetCountryCode(segmentcomparisonvalue);
             segmentPayload = locationPayload;
         }
 
@@ -99,23 +98,5 @@ public sealed class SegmentSkill
         }
 
         return playfabApiSkills;
-    }
-
-    private static string GetCountryCode(string country)
-    {
-        StringDictionary countryCodes = new StringDictionary();
-        countryCodes.Add("India", "IN");
-        countryCodes.Add("Israel", "IL");
-        countryCodes.Add("Australia", "AU");
-        countryCodes.Add("Kenya", "KE");
-        countryCodes.Add("Egypt", "EG");
-        countryCodes.Add("China", "CN");
-
-        if (countryCodes.ContainsKey(country))
-        {
-            return countryCodes[country];
-        }
-
-        return string.Empty;
     }
 }
