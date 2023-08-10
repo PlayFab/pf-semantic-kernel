@@ -41,10 +41,10 @@ public sealed class ParseResultTests
         "Camila Morrone age", "count", "1")]
     public void ParseActionReturnsAction(string input, string expectedAction, params string[] expectedVariables)
     {
-        Dictionary<string, string>? expectedDictionary = null;
+        Dictionary<string, object>? expectedDictionary = null;
         for (int i = 0; i < expectedVariables.Length; i += 2)
         {
-            expectedDictionary ??= new Dictionary<string, string>();
+            expectedDictionary ??= new Dictionary<string, object>();
             expectedDictionary.Add(expectedVariables[i], expectedVariables[i + 1]);
         }
 

@@ -355,7 +355,7 @@ public class ChatStepwisePlanner
         return string.Join("\n", scratchPadLines).Trim();
     }
 
-    private async Task<string> InvokeActionAsync(string actionName, Dictionary<string, string> actionVariables)
+    private async Task<string> InvokeActionAsync(string actionName, Dictionary<string, object> actionVariables)
     {
         var availableFunctions = this.GetAvailableFunctions();
         var targetFunction = availableFunctions.FirstOrDefault(f => ToFullyQualifiedName(f) == actionName);
@@ -388,14 +388,14 @@ public class ChatStepwisePlanner
         }
     }
 
-    private SKContext CreateActionContext(Dictionary<string, string> actionVariables)
+    private SKContext CreateActionContext(Dictionary<string, object> actionVariables)
     {
         var actionContext = this._kernel.CreateNewContext();
         if (actionVariables != null)
         {
             foreach (var kvp in actionVariables)
             {
-                actionContext.Variables.Set(kvp.Key, kvp.Value);
+                actionContext.Variables.Set(kvp.Key, kvp.Value.ToString());
             }
         }
 

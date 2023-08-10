@@ -54,6 +54,7 @@ internal static class RestApiOperationExtensions
                 false,
                 RestApiOperationParameterLocation.Body,
                 RestApiOperationParameterStyle.Simple,
+                defaultValue: "application/json",
                 description: "Content type of REST API request body."));
         }
 

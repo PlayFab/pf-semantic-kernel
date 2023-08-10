@@ -224,6 +224,11 @@ public class StepwisePlanner : IStepwisePlanner
         // Extract action
         Match actionMatch = s_actionRegex.Match(input);
 
+        if (input.Contains("[ACTION]") && !actionMatch.Success)
+        {
+            actionMatch = s_pfActionRegex.Match(input);
+        }
+
         if (actionMatch.Success)
         {
             var json = actionMatch.Groups[1].Value.Trim();
@@ -331,7 +336,7 @@ public class StepwisePlanner : IStepwisePlanner
         return scratchPad;
     }
 
-    private async Task<string> InvokeActionAsync(string actionName, Dictionary<string, string> actionVariables)
+    private async Task<string> InvokeActionAsync(string actionName, Dictionary<string, object> actionVariables)
     {
         var availableFunctions = this.GetAvailableFunctions();
         var targetFunction = availableFunctions.FirstOrDefault(f => ToFullyQualifiedName(f) == actionName);
@@ -364,14 +369,14 @@ public class StepwisePlanner : IStepwisePlanner
         }
     }
 
-    private SKContext CreateActionContext(Dictionary<string, string> actionVariables)
+    private SKContext CreateActionContext(Dictionary<string, object> actionVariables)
     {
         var actionContext = this._kernel.CreateNewContext();
         if (actionVariables != null)
         {
             foreach (var kvp in actionVariables)
             {
-                actionContext.Variables.Set(kvp.Key, kvp.Value);
+                actionContext.Variables.Set(kvp.Key, kvp.Value.ToString());
             }
         }
 
@@ -482,7 +487,8 @@ public class StepwisePlanner : IStepwisePlanner
     /// <summary>
     /// The regex for parsing the action response
     /// </summary>
-    private static readonly Regex s_actionRegex = new(@"\[ACTION\][^{}]*({(?:[^{}]*{[^{}]*})*[^{}]*})", RegexOptions.Singleline);
+    private static readonly Regex s_actionRegex =   new(@"\[ACTION\][^{}]*({(?:[^{}]*{[^{}]*})*[^{}]*})", RegexOptions.Singleline);
+    private static readonly Regex s_pfActionRegex = new(@"\[ACTION\][^{}]*({.*})", RegexOptions.Singleline);
 
     /// <summary>
     /// The regex for parsing the thought response

@@ -26,7 +26,7 @@ public class SystemStep
     /// Gets or sets the variables for the action
     /// </summary>
     [JsonPropertyName("action_variables")]
-    public Dictionary<string, string>? ActionVariables { get; set; }
+    public Dictionary<string, object>? ActionVariables { get; set; }
 
     /// <summary>
     /// Gets or sets the output of the action
