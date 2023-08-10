@@ -20,8 +20,6 @@ namespace Microsoft.SemanticKernel.Skills.Core;
 /// </summary>
 public sealed class SegmentSkill
 {
-    ContextVariables contextVariables = new ContextVariables();
-
     /// <summary>
     /// Read a file
     /// </summary>
@@ -39,6 +37,7 @@ public sealed class SegmentSkill
     {
         //ToDo: Create payload json using Playfab dlls/sdk
         // Set properties to create a Segment using swagger.json
+        ContextVariables contextVariables = new ContextVariables();
         contextVariables.Set("content_type", "application/json");
         contextVariables.Set("server_url", TestConfiguration.PlayFab.Endpoint);
         string segmentPayload = GetSegmentPayload(segmentname, segmentdefinition, segmentcomparison, ref segmentcomparisonvalue);
