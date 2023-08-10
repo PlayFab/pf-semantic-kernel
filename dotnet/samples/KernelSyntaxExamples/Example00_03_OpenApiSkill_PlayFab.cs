@@ -28,10 +28,28 @@ public static class Example_00_03_OpenApiSkill_PlayFab
         await SkillImportExample();
 
         // Example semantic skill for generating PlayFab segments
-        await JsonExample();
+        string[] questions = new string[]
+        {
+             "How do I create a segment for Android players in Canada?",
+             "How do I create a segment for players with high risk of churn who have spent over $100?"
+        };
+
+        foreach (string q in questions)
+        {
+            try
+            {
+                Console.WriteLine("Question: " + q);
+                await JsonExample(q);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
+        }
+
 
         // Examples for native skill calling PlayFab APIs
-        string[] questions = new string[]
+        questions = new string[]
         {
              "Get the details for all my PlayFab segments",
              "Do I have a segment that filters for Canadian players?",
@@ -115,7 +133,7 @@ public static class Example_00_03_OpenApiSkill_PlayFab
         }
     }
 
-    private static async Task JsonExample()
+    private static async Task JsonExample(string question)
     {
         var kernel = new KernelBuilder()
             .WithLogger(ConsoleLogger.Logger)
@@ -141,11 +159,7 @@ Question:
 
         var playfabJsonFunction = kernel.CreateSemanticFunction(FunctionDefinition, temperature: 0.1, topP: 1);
 
-        string input = "How do I create a segment for Android players in Canada?";
-
-        Console.WriteLine("Question: " + input);
-
-        var result = await playfabJsonFunction.InvokeAsync(input);
+        var result = await playfabJsonFunction.InvokeAsync(question);
 
         Console.WriteLine("Result: " + result);
     }

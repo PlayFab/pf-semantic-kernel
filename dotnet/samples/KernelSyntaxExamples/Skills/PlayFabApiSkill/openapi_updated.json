@@ -76,17 +76,21 @@
         "responses": {
           "200": {
             "description": "Response containing the id of the created segment, or an error message if applicable.",
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateSegmentResponse"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSegmentResponse"
+                }
               }
             }
           },
           "400": {
             "description": "",
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApiErrorWrapper"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorWrapper"
+                }
               }
             }
           }
