@@ -13,7 +13,7 @@
       "url": "https://github.com/PlayFab/API_Specs/blob/master/LICENSE"
     }
   },
-  "host": "4B51D88A.data-svcs.playfabapi.com",
+  "host": "titleId.playfabapi.com",
   "schemes": [
     "https"
   ],
@@ -795,85 +795,12 @@
       ],
       "example": {
         "SegmentModel": {
-          "Name": "Segment with all available predicates",
+          "Name": "My user segment",
           "SegmentOrDefinitions": [
             {
               "SegmentAndDefinitions": [
                 {
-                  "AllPlayersFilter": {}
-                }
-              ]
-            },
-            {
-              "SegmentAndDefinitions": [
-                {
-                  "AdCampaignFilter": {
-                    "Comparison": "EqualTo",
-                    "CampaignID": "MyCampaign",
-                    "CampaignSource": "MyCampaignSource"
-                  },
-                  "ChurnPredictionFilter": {
-                    "Comparison": "GreaterThan",
-                    "PredictedChurnRisk": "MediumRisk"
-                  },
-                  "FirstLoginDateFilter": {
-                    "Comparison": "LessThanOrEqualTo",
-                    "LoginDate": "2023-01-01"
-                  },
-                  "FirstLoginFilter": {
-                    "Comparison": "GreaterThan",
-                    "DurationInMinutes": 1440
-                  },
-                  "LastLoginDateFilter": {
-                    "Comparison": "GreaterThanOrEqualTo",
-                    "LoginDate": "2023-01-01"
-                  },
-                  "LastLoginFilter": {
-                    "Comparison": "GreaterThan",
-                    "DurationInMinutes": 1440
-                  },
-                  "LinkedUserAccountFilter": {
-                    "LoginProvider": "AndroidDevice"
-                  },
-                  "LinkedUserAccountHasEmailFilter": {
-                    "Comparison": "EqualTo",
-                    "LoginProvider": "IOSDevice"
-                  },
-                  "LocationFilter": {
-                    "CountryCode": "US"
-                  },
-                  "PushNotificationFilter": {
-                    "Comparison": "EqualTo",
-                    "PushNotificationPlatform": "ApplePushNotificationService"
-                  },
-                  "StatisticFilter": {
-                    "Comparison": "GreaterThan",
-                    "Name": "MyStatistic",
-                    "FilterValue": 100,
-                    "UseCurrentVersion": true,
-                    "Version": 1
-                  },
-                  "TagFilter": {
-                    "Comparison": "EqualTo",
-                    "TagValue": "MyTag"
-                  },
-                  "TotalValueToDateInUSDFilter": {
-                    "Comparison": "GreaterThan",
-                    "Amount": 100
-                  },
-                  "UserOriginationFilter": {
-                    "Comparison": "EqualTo",
-                    "Origination": "Steam"
-                  },
-                  "ValueToDateFilter": {
-                    "Comparison": "LessThan",
-                    "Amount": 10,
-                    "Currency": "USD"
-                  },
-                  "VirtualCurrencyBalanceFilter": {
-                    "Comparison": "GreaterThanOrEqualTo",
-                    "Amount": 10,
-                    "CurrencyCode": "MyTestCurrency"
+                  "AllPlayersFilter": {
                   }
                 }
               ]
@@ -882,12 +809,19 @@
           "EnteredSegmentActions": [
             {
               "BanPlayerAction": {
-                "BanHours": 1,
-                "ReasonForBan": "Not played for a day"
+                "BanHours": 2,
+                "ReasonForBan": "Not played for a year"
               }
             }
           ],
-          "LeftSegmentActions": []
+          "LeftSegmentActions": [
+            {
+              "ExecuteAzureFunctionAction": {
+                "AzureFunction": "AzureFunction1",
+                "FunctionParameter": "{\"InputParam\": \"1\"}"
+              }
+            }
+          ]
         }
       }
     },
