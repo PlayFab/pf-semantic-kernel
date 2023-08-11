@@ -449,18 +449,18 @@ simply output the final script below without any additional explanations.
 
             // Read the Python process output and error
             string output = process.StandardOutput.ReadToEnd().Trim();
-            string error = process.StandardError.ReadToEnd().Trim();
+            string warningsAndErrors = process.StandardError.ReadToEnd().Trim();
 
 
             // Wait for the process to finish
             process.WaitForExit();
 
             // If there are errors in the script, try to fix them
-            if (!string.IsNullOrEmpty(error))
+            if (process.ExitCode != 0)
             {
-                Console.WriteLine("Error in script: " + error);
+                Console.WriteLine("Error in script: " + warningsAndErrors);
                 chatCompletion.Messages.Add(new ChatMessage(ChatRole.Assistant, pythonScript));
-                chatCompletion.Messages.Add(new ChatMessage(ChatRole.User, FixPythonScriptPrompt.Replace("{{$error}}", error)));
+                chatCompletion.Messages.Add(new ChatMessage(ChatRole.User, FixPythonScriptPrompt.Replace("{{$error}}", warningsAndErrors)));
 
                 response = await this._openAIClient.GetChatCompletionsAsync(
                     deploymentOrModelName: TestConfiguration.AzureOpenAI.ChatDeploymentName, chatCompletion);
