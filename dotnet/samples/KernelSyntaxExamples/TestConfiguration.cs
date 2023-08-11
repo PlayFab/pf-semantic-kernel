@@ -162,7 +162,6 @@ public sealed class TestConfiguration
         public string TitleId { get; set; }
         public string TitleSecretKey { get; set; }
         public string SwaggerEndpoint { get; set; }
-        public string ReportsCosmosDBConnectionString { get; set; }
         public string ReportsCosmosDBEndpoint { get; set; }
         public string ReportsCosmosDBKey { get; set; }
         public string ReportsCosmosDBDatabaseName { get; set; }
