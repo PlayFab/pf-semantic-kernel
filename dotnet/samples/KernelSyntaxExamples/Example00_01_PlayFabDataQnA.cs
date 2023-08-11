@@ -512,23 +512,15 @@ public class ReportDataFetcher : IDisposable
         this._containerName = containerName ?? throw new ArgumentNullException(nameof(containerName));
     }
 
-    public async Task<GameReport?> FetchAsync(string documentId, CancellationToken cancellationToken)
+    public async Task<GameReport> FetchAsync(string documentId, CancellationToken cancellationToken)
     {
         // Get a reference to the database and container
         Database database = this._cosmosClient.GetDatabase(this._databaseName);
         Microsoft.Azure.Cosmos.Container container = database.GetContainer(this._containerName);
 
-        try
-        {
-            // Read the document by its ID
-            ItemResponse<GameReport> response = await container.ReadItemAsync<GameReport>(documentId, new PartitionKey(this._titleId), cancellationToken: cancellationToken);
-            return response.Resource;
-        }
-        catch (CosmosException ex)
-        {
-            Console.WriteLine($"Error: {ex.Message}");
-            return null;
-        }
+        // Read the document by its ID
+        ItemResponse<GameReport> response = await container.ReadItemAsync<GameReport>(documentId, new PartitionKey(this._titleId), cancellationToken: cancellationToken);
+        return response.Resource;
     }
 
     public async Task<IList<GameReport>> FetchByQueryAsync(string query, CancellationToken cancellationToken)
@@ -538,29 +530,22 @@ public class ReportDataFetcher : IDisposable
         Microsoft.Azure.Cosmos.Container container = database.GetContainer(this._containerName);
 
         List<GameReport> ret = new();
-        try
-        {
-            // Execute the query
-            QueryDefinition queryDefinition = new(query);
-            FeedIterator<dynamic> resultSetIterator = container.GetItemQueryIterator<dynamic>(queryDefinition);
 
-            while (resultSetIterator.HasMoreResults)
+        // Execute the query
+        QueryDefinition queryDefinition = new(query);
+        FeedIterator<dynamic> resultSetIterator = container.GetItemQueryIterator<dynamic>(queryDefinition);
+
+        while (resultSetIterator.HasMoreResults)
+        {
+            FeedResponse<dynamic> response = await resultSetIterator.ReadNextAsync(cancellationToken);
+            foreach (dynamic item in response)
             {
-                FeedResponse<dynamic> response = await resultSetIterator.ReadNextAsync(cancellationToken);
-                foreach (dynamic item in response)
+                GameReport? gameReport = ((JObject)item).ToObject<GameReport>();
+                if (gameReport is not null)
                 {
-                    GameReport? gameReport = ((JObject)item).ToObject<GameReport>();
-                    if (gameReport is not null)
-                    {
-                        ret.Add(gameReport);
-                    }
+                    ret.Add(gameReport);
                 }
             }
-        }
-        catch (CosmosException ex)
-        {
-            Console.WriteLine($"Error: {ex.Message}");
-            return new List<GameReport>();
         }
 
         return ret;
