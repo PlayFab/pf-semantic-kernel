@@ -159,6 +159,7 @@ public sealed class TestConfiguration
     public class PlayFabConfig
     {
         public string Endpoint { get; set; }
+        public string TitleId { get; set; }
         public string TitleSecretKey { get; set; }
         public string SwaggerEndpoint { get; set; }
         public string ReportsCosmosDBConnectionString { get; set; }

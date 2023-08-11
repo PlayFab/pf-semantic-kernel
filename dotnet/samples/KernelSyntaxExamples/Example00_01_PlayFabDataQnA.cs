@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 using System.Linq;
 using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 public enum PlannerType
 {
@@ -31,18 +32,20 @@ public enum PlannerType
 // ReSharper disable once InconsistentNaming
 public static partial class Example00_01_PlayFabDataQnA
 {
+    public static Dictionary<string, string> AllTitleReports = null;
+
     public static async Task RunAsync()
     {
         CancellationToken cancellationToken = CancellationToken.None;
         string[] questions = new string[]
         {
-            "Which three items had the highest total sales and which had the highest revenue generated yesterday?",
-            "When is the typical price of in-game purchases is the highest during the day and when it is the lowest?",
-            "Is my daily active users better or worse than it was last week?",
-            "If the number of monthly active players in France increases by 30%, what would be the percentage increase to the overall monthly active players?",
+            "What is my 2-days retention average? Was my 2-days retention in the last few days was better or worse than that?",
             "How many players played my game yesterday?",
             "What is the average number of players I had last week excluding Friday and Monday?",
-            "Is my game doing better in USA or in China?"
+            "Is my game doing better in USA or in China?",
+            "If the number of monthly active players in France increases by 30%, what would be the percentage increase to the overall monthly active players?",
+            "At which specific times of the day were the highest and lowest numbers of purchases recorded? Please provide the actual sales figures for these particular time slots.",
+            "Which three items had the highest total sales and which had the highest revenue generated yesterday?",
         };
 
         PlannerType[] planners = new[]
@@ -135,7 +138,7 @@ public static partial class Example00_01_PlayFabDataQnA
         }
 
         Console.WriteLine("Time Taken: " + sw.Elapsed);
-        Console.WriteLine("*****************************************************");
+        Console.WriteLine("");
     }
 
     private static async Task<IKernel> GetKernelAsync(CancellationToken cancellationToken)
@@ -176,131 +179,116 @@ public static partial class Example00_01_PlayFabDataQnA
             .Build();
 
         // We're using volotile memory, so pre-load it with data
-        await InitializeMemoryAsync(kernel, cancellationToken);
+        await InitializeMemoryAsync(kernel, TestConfiguration.PlayFab.TitleId, cancellationToken);
 
         return kernel;
     }
 
-    private static async Task InitializeMemoryAsync(IKernel kernel, CancellationToken cancellationToken)
+    private static async Task InitializeMemoryAsync(IKernel kernel, string titleId, CancellationToken cancellationToken)
     {
-        DateTime today = DateTime.UtcNow.Date;
+        if (AllTitleReports == null)
+        {
+            DateTime today = DateTime.UtcNow.Date;
 
-        string titleId = "B343";
-        using var reportDataFetcher = new ReportDataFetcher(
-            titleId,
-            TestConfiguration.PlayFab.ReportsCosmosDBEndpoint,
-            TestConfiguration.PlayFab.ReportsCosmosDBKey,
-            TestConfiguration.PlayFab.ReportsCosmosDBDatabaseName,
-            TestConfiguration.PlayFab.ReportsCosmosDBContainerName);
+            using var reportDataFetcher = new ReportDataFetcher(
+                titleId,
+                TestConfiguration.PlayFab.ReportsCosmosDBEndpoint,
+                TestConfiguration.PlayFab.ReportsCosmosDBKey,
+                TestConfiguration.PlayFab.ReportsCosmosDBDatabaseName,
+                TestConfiguration.PlayFab.ReportsCosmosDBContainerName);
 
-        IList<GameReport> gameReports = await reportDataFetcher.FetchByQueryAsync(
-            $"SELECT * FROM c WHERE c.TitleId='{titleId}' and c.ReportDate>='{today.AddDays(-3):yyyy-MM-dd}'",
-            cancellationToken);
+            IList<GameReport> gameReports = await reportDataFetcher.FetchByQueryAsync(
+                $"SELECT * FROM c WHERE c.TitleId='{titleId}' and c.ReportDate>='{today.AddDays(-3):yyyy-MM-dd}'",
+                cancellationToken);
 
-        Dictionary<string, GameReport> latestReports = gameReports
-          .GroupBy(report => report.ReportName)
-          .Select(group =>
-              group.OrderByDescending(report => report.ReportDate).First()
-          )
-          .ToDictionary(report => report.ReportName);
+            Dictionary<string, GameReport> latestReports = gameReports
+              .GroupBy(report => report.ReportName)
+              .Select(group => group.OrderByDescending(report => report.ReportDate).First())
+              .ToDictionary(report => report.ReportName);
 
+            if (!latestReports.ContainsKey("EngagementMetricsRollupReportCSV"))
+            {
+                GameReport gameEngagementRollupReport = (await reportDataFetcher.FetchByQueryAsync(
+                     $"SELECT TOP 1 * FROM c WHERE c.TitleId='{titleId}' and c.ReportName='EngagementMetricsRollupReportCSV' ORDER BY c.ReportDate DESC",
+                    cancellationToken)).FirstOrDefault();
+                latestReports.Add(gameEngagementRollupReport.ReportName, gameEngagementRollupReport);
+            }
 
+            string dailyOverviewReport =
+                DailyOverviewReportRecord.GetDescription() + Environment.NewLine +
+                DailyOverviewReportRecord.GetHeader() + Environment.NewLine +
+                string.Join(Environment.NewLine,
+                    JsonConvert.DeserializeObject<List<DailyOverviewReportRecord>>(latestReports["DailyOverviewReport"].ReportData)
+                    .Select(reportData => reportData.AsCsvRow()));
 
-        string dailyOverviewReport =
-            DailyOverviewReportRecord.GetDescription() + Environment.NewLine +
-            DailyOverviewReportRecord.GetHeader() + Environment.NewLine +
-            string.Join(Environment.NewLine,
-                JsonConvert.DeserializeObject<List<DailyOverviewReportRecord>>(latestReports["DailyOverviewReport"].ReportData)
-                .Select(reportData => reportData.AsCsvRow()));
+            string rollingThirtyDayOverviewReport =
+                RollingThirtyDayOverviewReportRecord.GetDescription() + Environment.NewLine +
+                RollingThirtyDayOverviewReportRecord.GetHeader() + Environment.NewLine +
+                string.Join(Environment.NewLine,
+                    JsonConvert.DeserializeObject<List<RollingThirtyDayOverviewReportRecord>>(latestReports["RollingThirtyDayOverviewReport"].ReportData)
+                    .Select(reportData => reportData.AsCsvRow()));
 
-        string dailyTopItemsReportRecord =
-            DailyTopItemsReportRecord.GetDescription() + Environment.NewLine +
-            DailyTopItemsReportRecord.GetHeader() + Environment.NewLine +
-            string.Join(Environment.NewLine,
-                JsonConvert.DeserializeObject<List<DailyTopItemsReportRecord>>(latestReports["DailyTopItemsReport"].ReportData)
-                .Select(reportData => reportData.AsCsvRow()));
+            string dailyTopItemsReportRecord =
+                DailyTopItemsReportRecord.GetDescription() + Environment.NewLine +
+                DailyTopItemsReportRecord.GetHeader() + Environment.NewLine +
+                string.Join(Environment.NewLine,
+                    JsonConvert.DeserializeObject<List<DailyTopItemsReportRecord>>(latestReports["DailyTopItemsReport"].ReportData)
+                    .Select(reportData => reportData.AsCsvRow()));
 
+            string thirtyDayRetentionReportRecord =
+                ThirtyDayRetentionReportRecord.GetDescription() + Environment.NewLine +
+                ThirtyDayRetentionReportRecord.GetHeader() + Environment.NewLine +
+                string.Join(Environment.NewLine,
+                    JsonConvert.DeserializeObject<List<ThirtyDayRetentionReportRecord>>(latestReports["ThirtyDayRetentionReport"].ReportData)
+                    .Where(row => row.CohortDate > DateTime.UtcNow.AddDays(-14)) // Filter just last 14 days so it doesn't pass the embedding limit when indexed
+                    .Select(reportData => reportData.AsCsvRow()));
 
+            var latestEngagementMetrics =
+                latestReports["EngagementMetricsRollupReportCSV"].ReportData
+                    .Split("\"", StringSplitOptions.RemoveEmptyEntries).Where(line => line != ",")
+                    .Select(line =>
+                    {
+                        string[] values = line.Split(',');
 
-        string weeklyReport = $"""
-The provided CSV table contains weekly aggregated data related to the user activity and retention for a gaming application on the week of August 4, 2023.
-This data is broken down by different geographic regions, including France, Greater China, Japan, United Kingdom, United States, Latin America, India, Middle East & Africa, Germany, Canada, Western Europe, Asia Pacific, and Central & Eastern Europe.
-Each row represents a different geographic regions, and the columns contain specific metrics related to user engagement.
-Below is the description of each field in the table:
-- Date: The date for which the data is recorded
-- Region: The geographic region to which the data pertains.Examples include Greater China, France, Japan, United Kingdom, United States, Latin America, India, Middle East & Africa, Germany, Canada, Western Europe, Asia Pacific, and Central & Eastern Europe.
-- MonthlyActiveUsers: The total number of unique users who engaged with the game at least once during the month
-- DailyActiveUsers: The total number of unique users who engaged with the game on August 4, 2023.
-- NewPlayers: The number of new users who joined and engaged with the game on August 4, 2023.
-- Retention1Day: The percentage of users who returned to the game on the day after their first engagement(August 4, 2023).
-- Retention7Day: The percentage of users who returned to the game seven days after their first engagement(August 4, 2023).
-Date,Region,MonthlyActiveUsers,DailyActiveUsers,NewPlayers,Retention1Day,Retention7Day
-{today:yyyy/MM/dd},Greater China,2059256,292000,37733,5.4,3.03
-{today:yyyy/MM/dd},France,975300,302497,5029,13.69,8.26
-{today:yyyy/MM/dd},Japan,965110,321652,6394,10.83,7.21
-{today:yyyy/MM/dd},United Kingdom,802591,239125,4885,12.37,7.29
-{today:yyyy/MM/dd},United States,4624050,1454545,30046,13.66,8.21
-{today:yyyy/MM/dd},Latin America,2910856,417127,38295,9.25,5.51
-{today:yyyy/MM/dd},India,1257550,115146,21236,7.09,3.37
-{today:yyyy/MM/dd},Middle East &Africa,2247499,281922,29776,9.42,4.98
-{today:yyyy/MM/dd},Germany,1380647,456723,6222,14.19,8.72
-{today:yyyy/MM/dd},Canada,600845,208641,3344,14.33,8.8
-{today:yyyy/MM/dd},Western Europe,2451426,720703,15013,12.28,7.37
-{today:yyyy/MM/dd},Asia Pacific,2234259,344618,31704,7.94,4.5
-{today:yyyy/MM/dd},Central & Eastern Europe,2674562,625276,21676,10.12,6.16
-""";
+                        return new EngagementMetricsRollupReportCSVRecord
+                        {
+                            ReportDate = DateTime.Parse(values[1]),
+                            Platform = values[2],
+                            Region = values[3],
+                            Segment = values[4],
+                            MonthlyActiveUsers = int.Parse(values[5]),
+                            DailyActiveUsers = int.Parse(values[6]),
+                            NewPlayers = int.Parse(values[7]),
+                            Retention1Day = double.Parse(values[11]),
+                            Retention7Day = double.Parse(values[12]),
+                        };
+                    })
+                    .Where(row => row.Segment == "All" && row.Platform == "All")
+                    .ToList();
 
-        string weeklyReportWorldWide = $"""
-The provided CSV table contains weekly worldwide aggregated data related to the user activity and retention for a gaming application on the week of August 4, 2023.
-There is a single row representing worldwide data, and the columns contain specific metrics related to user engagement.
-Below is the description of each field in the table:
-- Date: The date for which the data is recorded
-- MonthlyActiveUsers: The total number of unique users who engaged with the game at least once during the month
-- DailyActiveUsers: The total number of unique users who engaged with the game on August 4, 2023.
-- NewPlayers: The number of new users who joined and engaged with the game on August 4, 2023.
-- Retention1Day: The percentage of users who returned to the game on the day after their first engagement(August 4, 2023).
-- Retention7Day: The percentage of users who returned to the game seven days after their first engagement(August 4, 2023).
-Date,MonthlyActiveUsers,DailyActiveUsers,NewPlayers,Retention1Day,Retention7Day
-{today:yyyy/MM/dd},24916479,5772155,251214,9.5,5.51
-""";
+            DateTime latestEngagmementRolloutReportDate = latestEngagementMetrics.Max(row => row.ReportDate);
+            latestEngagementMetrics = latestEngagementMetrics.Where(row => row.ReportDate == latestEngagmementRolloutReportDate).ToList();
+            string engagementMetricsRollupReport =
+                EngagementMetricsRollupReportCSVRecord.GetDescription() + Environment.NewLine +
+                EngagementMetricsRollupReportCSVRecord.GetHeader() + Environment.NewLine +
+                string.Join(Environment.NewLine, latestEngagementMetrics.Select(row => row.AsCsvRow()));
 
-        string dauReport = $"""
-The provided CSV table contains daily data related to the user activity and game faily active users(DAU) for the last eight days.Each row represents the number of unique users in that day:
-Date,DailyActiveUsers
-{today:yyyy/MM/dd},5772155
-{today.AddDays(-1):yyyy/MM/dd},5762155
-{today.AddDays(-2):yyyy/MM/dd},5764155
-{today.AddDays(-3):yyyy/MM/dd},5765155
-{today.AddDays(-4):yyyy/MM/dd},5765125
-{today.AddDays(-5):yyyy/MM/dd},5465155
-{today.AddDays(-6):yyyy/MM/dd},4865155
-{today.AddDays(-7):yyyy/MM/dd},4864155
-{today.AddDays(-8):yyyy/MM/dd},4565255
-""";
-        await kernel.Memory.SaveInformationAsync(
-            collection: "TitleID-Reports",
-            text: dailyOverviewReport,
-            id: "DailyOverviewReport");
+            AllTitleReports = new Dictionary<string, string>();
+            AllTitleReports.Add("DailyOverviewReport", dailyOverviewReport);
+            AllTitleReports.Add("RollingThirtyDayOverviewReport", rollingThirtyDayOverviewReport);
+            AllTitleReports.Add("DailyTopItemsReportRecord", dailyTopItemsReportRecord);
+            AllTitleReports.Add("ThirtyDayRetentionReportRecord", thirtyDayRetentionReportRecord);
+            AllTitleReports.Add("EngagementMetricsRollupReport", engagementMetricsRollupReport);
+        }
 
-        await kernel.Memory.SaveInformationAsync(
-            collection: "TitleID-Reports",
-            text: dailyTopItemsReportRecord,
-            id: "DailyTopItemsReportRecord");
-
-        await kernel.Memory.SaveInformationAsync(
-            collection: "TitleID-Reports",
-            text: weeklyReport,
-            id: "Weekly_Report");
-
-        await kernel.Memory.SaveInformationAsync(
-            collection: "TitleID-Reports",
-            text: weeklyReportWorldWide,
-            id: "WeeklyWorldwide_Report");
-
-        await kernel.Memory.SaveInformationAsync(
-            collection: "TitleID-Reports",
-            text: dauReport,
-            id: "DAU_Report");
+        foreach (var item in AllTitleReports)
+        {
+            await kernel.Memory.SaveInformationAsync(
+                collection: "TitleID-Reports",
+                text: item.Value,
+                id: item.Key,
+                cancellationToken: cancellationToken);
+        }
     }
 }
 
@@ -433,17 +421,14 @@ simply output the final script below without any additional explanations.
         {
             // Inline Python script
             string pythonScript = response.Value.Choices[0].Message.Content;
+            pythonScript = GetScriptOnly(pythonScript)
+                .Replace("\"", "\\\"")  // Quote so we can run python via commandline 
+                .Replace("pd.compat.StringIO(", "io.StringIO("); // Fix common script mistake
+
             if (!pythonScript.Contains("import io"))
             {
                 pythonScript = "import io\n\n" + pythonScript;
             }
-
-            pythonScript = pythonScript
-                .Trim("```python")
-                .Trim("```")
-                .Replace("\"", "\\\"")  // Quote so we can run python via commandline 
-                .Replace("pd.compat.StringIO(", "io.StringIO("); // Fix common script mistake
-
 
             // Create a ProcessStartInfo and set the required properties
             var startInfo = new ProcessStartInfo
@@ -489,27 +474,24 @@ simply output the final script below without any additional explanations.
         return "Couldn't get an answer";
     }
 
-    #endregion
-}
-
-public static class StringHelper
-{
-    public static string Trim(this string source, string wordToRemove)
+    private string GetScriptOnly(string pythonScript)
     {
-        // Remove from the beginning
-        while (source.StartsWith(wordToRemove, StringComparison.OrdinalIgnoreCase))
+        const string startMarker = "```python";
+        const string endMarker = "```";
+
+        string ret = pythonScript;
+        int startIndex = pythonScript.IndexOf(startMarker) + startMarker.Length;
+        int endIndex = pythonScript.LastIndexOf(endMarker);
+
+        if (startIndex >= 0 && endIndex > startIndex)
         {
-            source = source.Substring(wordToRemove.Length);
+            ret = pythonScript.Substring(startIndex, endIndex - startIndex);
         }
 
-        // Remove from the end
-        while (source.EndsWith(wordToRemove, StringComparison.OrdinalIgnoreCase))
-        {
-            source = source.Substring(0, source.Length - wordToRemove.Length);
-        }
-
-        return source;
+        return ret;
     }
+
+    #endregion
 }
 
 public class ReportDataFetcher : IDisposable
@@ -642,12 +624,57 @@ public class DailyOverviewReportRecord
     public decimal AvgPurchasePrice { get; set; }
     public int NewUsers { get; set; }
 }
+
+public class RollingThirtyDayOverviewReportRecord
+{
+    public static string GetHeader() =>
+        "Timestamp,TotalLogins,UniqueLogins,UniquePayers,Revenue,Purchases,TotalCalls,TotalSuccessfulCalls,TotalErrors,Arpu,Arppu,AvgPurchasePrice,NewUsers";
+
+    public string AsCsvRow() =>
+        $"{this.Timestamp:yyyy/MM/dd},{this.TotalLogins},{this.UniqueLogins},{this.UniquePayers},{this.Revenue},{this.Purchases},{this.TotalCalls},{this.TotalSuccessfulCalls},{this.TotalErrors},{this.Arpu},{this.Arppu},{this.AvgPurchasePrice},{this.NewUsers}";
+
+    public static string GetDescription() =>
+        """
+        The provided CSV table contains daily data for the last 30 days capturing game reports for each day, offering valuable insights into player engagement, financial performance, and the overall gameplay experience.
+        This dataset offers a comprehensive view into player behavior, enabling data-driven decisions to enhance gameplay, optimize monetization strategies, and improve overall player satisfaction.
+        Through its day-by-day breakdown, it allows for precise analysis of temporal patterns, aiding in understanding player dynamics over different times of the week.
+        The report has 30 rows where every row reprsents one the day of the last 30 days.
+        Description of Columns:
+        - Timestamp: The date of a one-day window when the report was compiled, presented in Coordinated Universal Time (UTC).
+        - TotalLogins: The aggregate count of player logins during the specified day, revealing the volume of player interactions.
+        - UniqueLogins: The distinct number of players who logged into the game within the same day, indicating individual engagement.
+        - UniquePayers: The count of unique players who conducted in-game purchases, reflecting the game's monetization reach.
+        - Revenue: The cumulative revenue in dollars generated from in-game purchases throughout the day, demonstrating financial performance.
+        - Purchases: The total number of in-game transactions carried out by players in the specified day.
+        - TotalCalls: The collective sum of player-initiated interactions, encompassing gameplay actions, API requests, and more..
+        - TotalSuccessfulCalls: The count of interactions that succeeded without encountering errors, highlighting player satisfaction.
+        - TotalErrors: The overall number of errors encountered during interactions, potential indicators of player experience challenges.
+        - Arpu (Average Revenue Per User): The average revenue generated per unique player, calculated as Revenue / UniquePayers.
+        - Arppu (Average Revenue Per Paying User): The average revenue generated per player who made purchases, calculated as Revenue / UniquePayers.
+        - AvgPurchasePrice: The average price of in-game purchases made by players, calculated as Revenue / Purchases.
+        - NewUsers: The count of new players who started engaging with the game during the specified day period.
+        """;
+    public DateTime Timestamp { get; set; }
+    public int TotalLogins { get; set; }
+    public int UniqueLogins { get; set; }
+    public int UniquePayers { get; set; }
+    public decimal Revenue { get; set; }
+    public int Purchases { get; set; }
+    public long TotalCalls { get; set; }
+    public long TotalSuccessfulCalls { get; set; }
+    public long TotalErrors { get; set; }
+    public decimal Arpu { get; set; }
+    public decimal Arppu { get; set; }
+    public decimal AvgPurchasePrice { get; set; }
+    public int NewUsers { get; set; }
+}
+
 public class DailyTopItemsReportRecord
 {
     public static string GetHeader() => "ItemName,TotalSales,TotalRevenue";
 
     public string AsCsvRow() =>
-        $"{this.ItemName.Replace("[\\\"", "").Replace("\\\"]", "")},{this.TotalSales},{this.TotalRevenue}";
+        $"{this.ItemName.Replace("[\"", "").Replace("\"]", "")},{this.TotalSales},{this.TotalRevenue}";
 
     public static string GetDescription() =>
         """
@@ -664,4 +691,73 @@ public class DailyTopItemsReportRecord
     public string ItemName { get; set; }
     public int TotalSales { get; set; }
     public decimal TotalRevenue { get; set; }
+}
+
+public class EngagementMetricsRollupReportCSVRecord
+{
+    public static string GetHeader() => "Date,Region,MonthlyActiveUsers,DailyActiveUsers,NewPlayers,Retention1Day,Retention7Day";
+
+    public string AsCsvRow() =>
+        $"{this.ReportDate:yyyy/MM/dd},{this.Region},{this.MonthlyActiveUsers},{this.DailyActiveUsers},{this.NewPlayers},{this.Retention1Day},{this.Retention7Day}";
+
+    public static string GetDescription() =>
+        """
+        The provided CSV table contains weekly aggregated data related to the user activity and retention for a gaming application.
+        This data is broken down by different geographic regions, including France, Greater China, Japan, United Kingdom, United States, Latin America, India, Middle East & Africa, Germany, Canada, Western Europe, Asia Pacific, and Central & Eastern Europe.
+        Each row represents a different geographic regions, and the columns contain specific metrics related to user engagement.
+        There is a special row for each week with the Region set to 'All', which means this row aggregates data across all the regions for that week
+        Below is the description of each field in the table:
+        - ReportDate: The date for week for which the data is recorded
+        - Region: The geographic region to which the data pertains.Examples include Greater China, France, Japan, United Kingdom, United States, Latin America, India, Middle East & Africa, Germany, Canada, Western Europe, Asia Pacific, and Central & Eastern Europe.
+        - MonthlyActiveUsers: The total number of unique users who engaged with the game at least once during the month
+        - DailyActiveUsers: The total number of unique users who engaged with the game on that week.
+        - NewPlayers: The number of new users who joined and engaged with the game on that week.
+        - Retention1Day: The percentage of users who returned to the game on the day after their first engagement.
+        - Retention7Day: The percentage of users who returned to the game seven days after their first engagement.
+        """;
+
+    public DateTime ReportDate { get; set; }
+    public string Platform { get; set; }
+    public string Region { get; set; }
+    public string Segment { get; set; }
+    public long MonthlyActiveUsers { get; set; }
+    public long DailyActiveUsers { get; set; }
+    public long NewPlayers { get; set; }
+    public double FocusAverageDuration { get; set; }
+    public double FocusAveragePeriodsPerUser { get; set; }
+    public long FocusTotalPeriods { get; set; }
+    public double Retention1Day { get; set; }
+    public double Retention7Day { get; set; }
+    public double Retention14Day { get; set; }
+    public double Retention30Day { get; set; }
+    public double RevenueDollars { get; set; }
+}
+
+public class ThirtyDayRetentionReportRecord
+{
+    public static string GetHeader() => "CohortDate,CohortSize,DaysLater,TotalRetained,PercentRetained";
+
+    public string AsCsvRow() =>
+        $"{this.CohortDate:yyyy/MM/dd},{this.CohortSize},{this.DaysLater},{this.TotalRetained},{this.PercentRetained}";
+
+    public static string GetDescription() =>
+        """
+        The provided CSV table contains retention report for daily cohorts of players in the last 30 days.
+        This retention dataset helps analyze player engagement and the effectiveness of retention strategies by tracking player behavior over time periods.
+        It can offer insights into player retention rates, allowing game developers to make informed decisions to improve player engagement and overall game experience.
+        Below is the description of each field in the table:
+        - CohortDate: The timestamp indicating when the retention data was collected
+        - CohortSize: The initial size of the cohort, representing the number of players at the beginning of the retention period.
+        - DaysLater: The number of days later at which the retention is being measured.
+        - TotalRetained: The total number of players retained in the specified cohort after the specified number of days.
+        - PercentRetained: The percentage of players retained in the cohort after the specified number of days.
+        """;
+
+    [JsonProperty("Ts")]
+    public DateTime CohortDate { get; set; }
+    public int CohortSize { get; set; }
+    [JsonProperty("PeriodsLater")]
+    public int DaysLater { get; set; }
+    public int TotalRetained { get; set; }
+    public double PercentRetained { get; set; }
 }
