@@ -37,7 +37,7 @@ public sealed class TestConfiguration
     public static RedisConfig Redis => LoadSection<RedisConfig>();
     public static JiraConfig Jira => LoadSection<JiraConfig>();
     public static ChromaConfig Chroma => LoadSection<ChromaConfig>();
-    public static PlayFabConfig PlayFab => LoadSection<PlayFabConfig>();
+    public static KustoConfig Kusto => LoadSection<KustoConfig>();
 
     private static T LoadSection<T>([CallerMemberName] string? caller = null)
     {
@@ -164,12 +164,9 @@ public sealed class TestConfiguration
         public string Endpoint { get; set; }
     }
 
-    public class PlayFabConfig
+    public class KustoConfig
     {
-        public string Endpoint { get; set; }
-        public string TitleSecretKey { get; set; }
-        public string SwaggerEndpoint { get; set; }
+        public string ConnectionString { get; set; }
     }
-
 #pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor.
 }
