@@ -17,9 +17,15 @@ namespace PlayFabExamples.Example02_Generative;
 /// </summary>
 public sealed class SegmentSkill
 {
-    public async Task<string> CreateSegmentUsingOpenAPI(string question)
+    /// <summary>
+    /// Create a segment using playfab open api json content.
+    /// </summary>
+    /// <param name="inputPrompt">Input prompt.</param>
+    /// <returns>Status of segment creation.</returns>
+    public async Task<string> CreateSegmentUsingOpenAPI(string inputPrompt)
     {
-        Console.WriteLine(question);
+        // Step 1: Generate payload content to create a segment.
+        Console.WriteLine(inputPrompt);
         var kernel = new KernelBuilder().WithLogger(ConsoleLogger.Logger)
             .WithAzureChatCompletionService(TestConfiguration.AzureOpenAI.ChatDeploymentName, TestConfiguration.AzureOpenAI.Endpoint, TestConfiguration.AzureOpenAI.ApiKey, alsoAsTextCompletion: true, setAsDefault: true)
             .Build();
@@ -28,7 +34,6 @@ public sealed class SegmentSkill
 
         string FunctionDefinition = @"
 You are an AI assistant for generating PlayFab input payload for given api. You have access to the full OpenAPI 3.0.1 specification.
-If you do not know how to answer the question, reply with 'I cannot answer this'.
 
 Api Spec:
 {{$apiSpec}}
@@ -65,32 +70,33 @@ Question:
 {{$input}}"
 .Replace("{{$apiSpec}}", miniJson, StringComparison.OrdinalIgnoreCase);
 
-        var playfabJsonFunction = kernel.CreateSemanticFunction(FunctionDefinition, temperature: 0.1, topP: 1);
-        var result = await playfabJsonFunction.InvokeAsync(question);
-        Console.WriteLine(result.Result);
+        var playfabJsonFunction = kernel.CreateSemanticFunction(FunctionDefinition, temperature: 0.1, topP: 0.1);
+        var result = await playfabJsonFunction.InvokeAsync(inputPrompt);
+        var payload = result.Result.Substring(result.Result.IndexOf('{'), result.Result.LastIndexOf('}') - result.Result.IndexOf('{') + 1);
+        Console.WriteLine(payload);
 
-        //return result.Result;
-
+        // Step 2: Create a segment using above generated payload.
         ContextVariables contextVariables = new();
         contextVariables.Set("content_type", "application/json");
         contextVariables.Set("server_url", TestConfiguration.PlayFab.Endpoint);
         contextVariables.Set("content_type", "application/json");
-        contextVariables.Set("payload", result.Result);
+        contextVariables.Set("payload", payload);
 
-        //kernel = new KernelBuilder().WithLogger(ConsoleLogger.Logger).Build();
         using HttpClient httpClient = new();
         var playfabApiSkills = await GetPlayFabSkill(kernel, httpClient);
-
-        // Run operation via the semantic kernel
         var result2 = await kernel.RunAsync(contextVariables, playfabApiSkills["CreateSegment"]);
 
-        Console.WriteLine("\n\n\n");
         var formattedContent = JsonConvert.SerializeObject(JsonConvert.DeserializeObject(result2.Result), Formatting.Indented);
-        Console.WriteLine("CreateSegment playfabApiSkills response: \n{0}", formattedContent);
+        Console.WriteLine("\nCreateSegment playfabApiSkills response: \n{0}", formattedContent);
 
         return $"Segment created successfully";
     }
 
+    /// <summary>
+    /// Minimizing jsob by removing spaces and new lines.
+    /// </summary>
+    /// <returns>Minimized json content.</returns>
+    /// <exception cref="FileNotFoundException">File not found exception.</exception>
     private static Task<string> GetMinifiedOpenApiJson()
     {
         var playfabApiFile = "./Example02_Generative/SegmentOpenAPIs.json";
@@ -100,10 +106,9 @@ Question:
             throw new FileNotFoundException($"Invalid URI. The specified path '{playfabApiFile}' does not exist.");
         }
 
-        var pluginJson = File.ReadAllText(playfabApiFile);
-        return Task.FromResult(JsonConvert.SerializeObject(JsonConvert.DeserializeObject(pluginJson), Formatting.None));
+        var playfabOpenAPIContent = File.ReadAllText(playfabApiFile);
+        return Task.FromResult(JsonConvert.SerializeObject(JsonConvert.DeserializeObject(playfabOpenAPIContent), Formatting.None));
     }
-
 
     /// <summary>
     /// Read a file

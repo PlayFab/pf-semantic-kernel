@@ -37,9 +37,6 @@
     <None Update="Example02_Generative\SegmentOpenAPIs.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Example02_Generative\SegmentSkills.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
 </Project>
