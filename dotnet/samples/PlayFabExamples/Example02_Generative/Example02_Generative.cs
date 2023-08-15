@@ -13,20 +13,22 @@ public static class Example02_Generative
     {
         var goals = new string[]
             {
-                "Create a segment with name NewPlayersSegment for the players first logged in date greater than 2023-08-01?", // Working
-                "Create a segment with name LegacyPlayersSegment for the players last logged in date less than 2023-05-01?", // Working
-                "Create a segment with name EgyptNewPlayers for the players located in the Egypt?", // Working
-                "Create a segment with name ChinaPlayers for the players in china and grant them 10 VC virtual currency?", // Working
-                //"Create a segment with name ChinaNewPlayers for the players in china who first logged in the last 30 days and grant them 10 virtual currency?",
-                //"Create a segment with name WelcomeEgyptNewPlayers for the players located in the Egypt with entered segment action of email notification?", // With entered segment action
-                //"Create a segment with name EgyptNewPlayers for the players located in the Egypt?" // If the segment already exist, create a segment with name appended with guid
+                "Create a segment for the players who not logged in the last 30 days?",
+                "Create a segment for the players first logged in date greater than 2023-08-01?", // Working
+                "Create a segment for the players last logged in date less than 2023-05-01?", // Working
+                "Create a segment for the players located in the Egypt?", // Working
+                "Create a segment for the players in china and grant them 10 VC virtual currency?", // Working
+                "Create a segment for the players in china who first logged in the last 30 days and grant them 10 virtual currency?",
+                "Create a segment for the players located in the Egypt with entered segment action of email notification with email template id of 32EA0620DC453040?", // With entered segment action                
             };
 
         foreach (string prompt in goals)
         {
             try
             {
-                await CreateSegmentExample(prompt);
+                // await CreateSegmentExample(prompt);
+                var text = await new SegmentSkill().CreateSegmentUsingOpenAPI(prompt);
+                Console.WriteLine();
             }
             catch (Exception ex)
             {

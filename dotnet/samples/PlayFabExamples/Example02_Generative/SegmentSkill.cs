@@ -17,6 +17,94 @@ namespace PlayFabExamples.Example02_Generative;
 /// </summary>
 public sealed class SegmentSkill
 {
+    public async Task<string> CreateSegmentUsingOpenAPI(string question)
+    {
+        Console.WriteLine(question);
+        var kernel = new KernelBuilder().WithLogger(ConsoleLogger.Logger)
+            .WithAzureChatCompletionService(TestConfiguration.AzureOpenAI.ChatDeploymentName, TestConfiguration.AzureOpenAI.Endpoint, TestConfiguration.AzureOpenAI.ApiKey, alsoAsTextCompletion: true, setAsDefault: true)
+            .Build();
+        SKContext context = kernel.CreateNewContext();
+        string miniJson = await GetMinifiedOpenApiJson();
+
+        string FunctionDefinition = @"
+You are an AI assistant for generating PlayFab input payload for given api. You have access to the full OpenAPI 3.0.1 specification.
+If you do not know how to answer the question, reply with 'I cannot answer this'.
+
+Api Spec:
+{{$apiSpec}}
+
+The CreateSegment operation in PlayFab Admin API requires a CreateSegmentRequest payload input.
+For FirstLoginFilter and LastLoginFilter, if the input value is days, convert value into minutes.
+Segment model name should be meaningful name from the input question.
+Don't provide any description about the answer. Only provide json payload content.
+Don't provide notes like below.
+Note: 30 days converted to minutes is 43200
+
+Example:
+Question: Create a segment for the players first logged in date greater than 2023-05-01?
+Answer: 
+{
+  ""SegmentModel"": {
+    ""Name"": ""FirstLoggedInPlayers"",
+    ""SegmentOrDefinitions"": [
+      {
+        ""SegmentAndDefinitions"": [
+          {
+            ""FirstLoginDateFilter"": {
+              ""LogInDate"": ""2023-05-01T00:00:00Z"",
+              ""Comparison"": ""GreaterThan""
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
+
+Question:
+{{$input}}"
+.Replace("{{$apiSpec}}", miniJson, StringComparison.OrdinalIgnoreCase);
+
+        var playfabJsonFunction = kernel.CreateSemanticFunction(FunctionDefinition, temperature: 0.1, topP: 1);
+        var result = await playfabJsonFunction.InvokeAsync(question);
+        Console.WriteLine(result.Result);
+
+        //return result.Result;
+
+        ContextVariables contextVariables = new();
+        contextVariables.Set("content_type", "application/json");
+        contextVariables.Set("server_url", TestConfiguration.PlayFab.Endpoint);
+        contextVariables.Set("content_type", "application/json");
+        contextVariables.Set("payload", result.Result);
+
+        //kernel = new KernelBuilder().WithLogger(ConsoleLogger.Logger).Build();
+        using HttpClient httpClient = new();
+        var playfabApiSkills = await GetPlayFabSkill(kernel, httpClient);
+
+        // Run operation via the semantic kernel
+        var result2 = await kernel.RunAsync(contextVariables, playfabApiSkills["CreateSegment"]);
+
+        Console.WriteLine("\n\n\n");
+        var formattedContent = JsonConvert.SerializeObject(JsonConvert.DeserializeObject(result2.Result), Formatting.Indented);
+        Console.WriteLine("CreateSegment playfabApiSkills response: \n{0}", formattedContent);
+
+        return $"Segment created successfully";
+    }
+
+    private static Task<string> GetMinifiedOpenApiJson()
+    {
+        var playfabApiFile = "./Example02_Generative/SegmentOpenAPIs.json";
+
+        if (!File.Exists(playfabApiFile))
+        {
+            throw new FileNotFoundException($"Invalid URI. The specified path '{playfabApiFile}' does not exist.");
+        }
+
+        var pluginJson = File.ReadAllText(playfabApiFile);
+        return Task.FromResult(JsonConvert.SerializeObject(JsonConvert.DeserializeObject(pluginJson), Formatting.None));
+    }
+
+
     /// <summary>
     /// Read a file
     /// </summary>
@@ -42,7 +130,6 @@ public sealed class SegmentSkill
         contextVariables.Set("server_url", TestConfiguration.PlayFab.Endpoint);
         string segmentPayload = GetSegmentPayload(segmentname, segmentdefinition, segmentcomparison, segmentcomparisonvalue, segmentaction, segmentactioncode, segmentactionvalue);
 
-        contextVariables.Set("content_type", "application/json");
         contextVariables.Set("payload", segmentPayload);
         var kernel = new KernelBuilder().WithLogger(ConsoleLogger.Logger).Build();
         using HttpClient httpClient = new();
@@ -99,7 +186,7 @@ public sealed class SegmentSkill
         bool useLocalFile = true;
         if (useLocalFile)
         {
-            var playfabApiFile = "../../../Skills/PlayFabApiSkill/openapi.json";
+            var playfabApiFile = "./Example02_Generative/SegmentOpenAPIs.json";
             playfabApiSkills = await kernel.ImportOpenApiSkillFromFileAsync("PlayFabApiSkill", playfabApiFile, new OpenApiSkillExecutionParameters(httpClient, authCallback: titleSecretKeyProvider.AuthenticateRequestAsync));
         }
         else
