@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System.Diagnostics;
+using System.Globalization;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Memory;
 using Microsoft.SemanticKernel.Orchestration;
@@ -23,20 +24,23 @@ public enum PlannerType
 // ReSharper disable once InconsistentNaming
 public static partial class Example01_DataQnA
 {
-    public static Dictionary<string, string> AllTitleReports = null;
-
+    #region Public Methods
+    /// <summary>
+    /// Runs this excample
+    /// </summary>
+    /// <returns>The async task</returns>
     public static async Task RunAsync()
     {
         CancellationToken cancellationToken = CancellationToken.None;
         string[] questions = new string[]
         {
-            "What is my 2-days retention average? Was my 2-days retention in the last few days was better or worse than that?",
+            "What is my 2-day retention average? Was my 2-day retention in the last few days better or worse than that?",
             "How many players played my game yesterday?",
             "What is the average number of players I had last week excluding Friday and Monday?",
             "Is my game doing better in USA or in China?",
             "If the number of monthly active players in France increases by 30%, what would be the percentage increase to the overall monthly active players?",
             "At which specific times of the day were the highest and lowest numbers of purchases recorded? Please provide the actual sales figures for these particular time slots.",
-            "Which three items had the highest total sales and which had the highest revenue generated yesterday?",
+            "Which three items had the highest total sales and which had the highest revenue generated?",
         };
 
         PlannerType[] planners = new[]
@@ -46,6 +50,11 @@ public static partial class Example01_DataQnA
             PlannerType.SimpleAction
         };
 
+        // We're using volotile memory, so pre-load it with data
+        IKernel kernel = GetKernel();
+        await InitializeKernelMemoryAsync(kernel.Memory, TestConfiguration.PlayFab.TitleId, cancellationToken);
+        InitializeKernelSkills(kernel);
+
         foreach (string question in questions)
         {
             foreach (PlannerType planner in planners)
@@ -54,8 +63,6 @@ public static partial class Example01_DataQnA
                 await Console.Out.WriteLineAsync("Planner: " + planner);
                 await Console.Out.WriteLineAsync("Question: " + question);
                 await Console.Out.WriteLineAsync("--------------------------------------------------------------------------------------------------------------------");
-
-                IKernel kernel = await GetKernelAsync(cancellationToken);
 
                 try
                 {
@@ -68,20 +75,19 @@ public static partial class Example01_DataQnA
             }
         }
     }
+    #endregion
 
+    #region Private Methods
+    /// <summary>
+    /// Run a question against the given kernel instance
+    /// </summary>
+    /// <param name="kernel">The semantic kernel to use</param>
+    /// <param name="question">The question that needs to be answered</param>
+    /// <param name="plannerType">The type of the planner to use</param>
+    /// <param name="cancellationToken">A cancellation token</param>
+    /// <returns>The async task</returns>
     private static async Task RunWithQuestionAsync(IKernel kernel, string question, PlannerType plannerType, CancellationToken cancellationToken)
     {
-        kernel.ImportSkill(new InlineDataProcessorSkill(kernel.Memory), "InlineDataProcessor");
-
-        // Maybe with gpt4 we can add more skills and make them more granular. Planners are instable with Gpt3.5 and complex analytic stesps.
-        // kernel.ImportSkill(new GameReportFetcherSkill(kernel.Memory), "GameReportFetcher");
-        // kernel.ImportSkill(new LanguageCalculatorSkill(kernel), "advancedCalculator");
-        // var bingConnector = new BingConnector(TestConfiguration.Bing.ApiKey);
-        // var webSearchEngineSkill = new WebSearchEngineSkill(bingConnector);
-        // kernel.ImportSkill(webSearchEngineSkill, "WebSearch");
-        // kernel.ImportSkill(new SimpleCalculatorSkill(kernel), "basicCalculator");
-        // kernel.ImportSkill(new TimeSkill(), "time");
-
         Plan plan;
         Stopwatch sw = Stopwatch.StartNew();
         if (plannerType == PlannerType.SimpleAction)
@@ -117,7 +123,8 @@ public static partial class Example01_DataQnA
         }
 
         SKContext result = await plan.InvokeAsync(kernel.CreateNewContext(), cancellationToken: cancellationToken);
-        Console.WriteLine("Result: " + result);
+        Console.WriteLine("Answer: ");
+        Console.WriteLine(result.ToString());
         if (result.Variables.TryGetValue("stepCount", out string? stepCount))
         {
             Console.WriteLine("Steps Taken: " + stepCount);
@@ -132,7 +139,11 @@ public static partial class Example01_DataQnA
         Console.WriteLine("");
     }
 
-    private static async Task<IKernel> GetKernelAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Builds a new semantic kernel instance
+    /// </summary>
+    /// <returns>A semantic kernel instance</returns>
+    private static IKernel GetKernel()
     {
         var builder = new KernelBuilder();
 
@@ -157,7 +168,7 @@ public static partial class Example01_DataQnA
         var kernel = builder
             .WithLogger(ConsoleLogger.Logger)
             .WithAzureTextEmbeddingGenerationService(
-                deploymentName: "text-embedding-ada-002",
+                deploymentName: TestConfiguration.AzureOpenAI.EmbeddingDeploymentName,
                 endpoint: TestConfiguration.AzureOpenAI.Endpoint,
                 apiKey: TestConfiguration.AzureOpenAI.ApiKey)
             .WithMemoryStorage(new VolatileMemoryStore())
@@ -169,116 +180,202 @@ public static partial class Example01_DataQnA
             }))
             .Build();
 
-        // We're using volotile memory, so pre-load it with data
-        await InitializeMemoryAsync(kernel, TestConfiguration.PlayFab.TitleId, cancellationToken);
-
         return kernel;
     }
 
-    private static async Task InitializeMemoryAsync(IKernel kernel, string titleId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Initialize the semantic kernel skills
+    /// </summary>
+    /// <param name="kernel"></param>
+    private static void InitializeKernelSkills(IKernel kernel)
     {
-        if (AllTitleReports == null)
+        kernel.ImportSkill(new InlineDataProcessorSkill(kernel.Memory), "InlineDataProcessor");
+
+        // Maybe with gpt4 we can add more skills and make them more granular. Planners are instable with Gpt3.5 and complex analytic stesps.
+        // kernel.ImportSkill(new GameReportFetcherSkill(kernel.Memory), "GameReportFetcher");
+        // kernel.ImportSkill(new LanguageCalculatorSkill(kernel), "advancedCalculator");
+        // var bingConnector = new BingConnector(TestConfiguration.Bing.ApiKey);
+        // var webSearchEngineSkill = new WebSearchEngineSkill(bingConnector);
+        // kernel.ImportSkill(webSearchEngineSkill, "WebSearch");
+        // kernel.ImportSkill(new SimpleCalculatorSkill(kernel), "basicCalculator");
+        // kernel.ImportSkill(new TimeSkill(), "time");
+    }
+
+    /// <summary>
+    /// Initialize the kernel memory (since we're using volotile memory)
+    /// </summary>
+    /// <param name="memory">The memory that should be initialized</param>
+    /// <param name="titleId">The tile ID whose data should be loaded to memory</param>
+    /// <param name="cancellationToken">A cancellation token</param>
+    /// <returns></returns>
+    private static async Task InitializeKernelMemoryAsync(
+        ISemanticTextMemory memory, string titleId, CancellationToken cancellationToken)
+    {
+        DateTime today = DateTime.UtcNow.Date;
+
+        using var reportDataFetcher = new ReportDataFetcher(
+            titleId,
+            TestConfiguration.PlayFab.ReportsCosmosDBEndpoint,
+            TestConfiguration.PlayFab.ReportsCosmosDBKey,
+            TestConfiguration.PlayFab.ReportsCosmosDBDatabaseName,
+            TestConfiguration.PlayFab.ReportsCosmosDBContainerName);
+
+        IList<GameReport> gameReports = await reportDataFetcher.FetchByQueryAsync(
+            $"SELECT * FROM c WHERE c.TitleId='{titleId}' and c.ReportDate>='{today.AddDays(-3):yyyy-MM-dd}'",
+            cancellationToken);
+
+        Dictionary<string, GameReport> latestReports = gameReports
+          .GroupBy(report => report.ReportName)
+          .Select(group => group.OrderByDescending(report => report.ReportDate).First())
+          .ToDictionary(report => report.ReportName);
+
+        if (!latestReports.ContainsKey("EngagementMetricsRollupReportCSV"))
         {
-            DateTime today = DateTime.UtcNow.Date;
-
-            using var reportDataFetcher = new ReportDataFetcher(
-                titleId,
-                TestConfiguration.PlayFab.ReportsCosmosDBEndpoint,
-                TestConfiguration.PlayFab.ReportsCosmosDBKey,
-                TestConfiguration.PlayFab.ReportsCosmosDBDatabaseName,
-                TestConfiguration.PlayFab.ReportsCosmosDBContainerName);
-
-            IList<GameReport> gameReports = await reportDataFetcher.FetchByQueryAsync(
-                $"SELECT * FROM c WHERE c.TitleId='{titleId}' and c.ReportDate>='{today.AddDays(-3):yyyy-MM-dd}'",
-                cancellationToken);
-
-            Dictionary<string, GameReport> latestReports = gameReports
-              .GroupBy(report => report.ReportName)
-              .Select(group => group.OrderByDescending(report => report.ReportDate).First())
-              .ToDictionary(report => report.ReportName);
-
-            if (!latestReports.ContainsKey("EngagementMetricsRollupReportCSV"))
-            {
-                GameReport gameEngagementRollupReport = (await reportDataFetcher.FetchByQueryAsync(
-                     $"SELECT TOP 1 * FROM c WHERE c.TitleId='{titleId}' and c.ReportName='EngagementMetricsRollupReportCSV' ORDER BY c.ReportDate DESC",
-                    cancellationToken)).FirstOrDefault();
-                latestReports.Add(gameEngagementRollupReport.ReportName, gameEngagementRollupReport);
-            }
-
-            string dailyOverviewReport =
-                DailyOverviewReportRecord.GetDescription() + Environment.NewLine +
-                DailyOverviewReportRecord.GetHeader() + Environment.NewLine +
-                string.Join(Environment.NewLine,
-                    JsonConvert.DeserializeObject<List<DailyOverviewReportRecord>>(latestReports["DailyOverviewReport"].ReportData)
-                    .Select(reportData => reportData.AsCsvRow()));
-
-            string rollingThirtyDayOverviewReport =
-                RollingThirtyDayOverviewReportRecord.GetDescription() + Environment.NewLine +
-                RollingThirtyDayOverviewReportRecord.GetHeader() + Environment.NewLine +
-                string.Join(Environment.NewLine,
-                    JsonConvert.DeserializeObject<List<RollingThirtyDayOverviewReportRecord>>(latestReports["RollingThirtyDayOverviewReport"].ReportData)
-                    .Select(reportData => reportData.AsCsvRow()));
-
-            string dailyTopItemsReportRecord =
-                DailyTopItemsReportRecord.GetDescription() + Environment.NewLine +
-                DailyTopItemsReportRecord.GetHeader() + Environment.NewLine +
-                string.Join(Environment.NewLine,
-                    JsonConvert.DeserializeObject<List<DailyTopItemsReportRecord>>(latestReports["DailyTopItemsReport"].ReportData)
-                    .Select(reportData => reportData.AsCsvRow()));
-
-            string thirtyDayRetentionReportRecord =
-                ThirtyDayRetentionReportRecord.GetDescription() + Environment.NewLine +
-                ThirtyDayRetentionReportRecord.GetHeader() + Environment.NewLine +
-                string.Join(Environment.NewLine,
-                    JsonConvert.DeserializeObject<List<ThirtyDayRetentionReportRecord>>(latestReports["ThirtyDayRetentionReport"].ReportData)
-                    .Where(row => row.CohortDate > DateTime.UtcNow.AddDays(-14)) // Filter just last 14 days so it doesn't pass the embedding limit when indexed
-                    .Select(reportData => reportData.AsCsvRow()));
-
-            var latestEngagementMetrics =
-                latestReports["EngagementMetricsRollupReportCSV"].ReportData
-                    .Split("\"", StringSplitOptions.RemoveEmptyEntries).Where(line => line != ",")
-                    .Select(line =>
-                    {
-                        string[] values = line.Split(',');
-
-                        return new EngagementMetricsRollupReportCSVRecord
-                        {
-                            ReportDate = DateTime.Parse(values[1]),
-                            Platform = values[2],
-                            Region = values[3],
-                            Segment = values[4],
-                            MonthlyActiveUsers = int.Parse(values[5]),
-                            DailyActiveUsers = int.Parse(values[6]),
-                            NewPlayers = int.Parse(values[7]),
-                            Retention1Day = double.Parse(values[11]),
-                            Retention7Day = double.Parse(values[12]),
-                        };
-                    })
-                    .Where(row => row.Segment == "All" && row.Platform == "All")
-                    .ToList();
-
-            DateTime latestEngagmementRolloutReportDate = latestEngagementMetrics.Max(row => row.ReportDate);
-            latestEngagementMetrics = latestEngagementMetrics.Where(row => row.ReportDate == latestEngagmementRolloutReportDate).ToList();
-            string engagementMetricsRollupReport =
-                EngagementMetricsRollupReportCSVRecord.GetDescription() + Environment.NewLine +
-                EngagementMetricsRollupReportCSVRecord.GetHeader() + Environment.NewLine +
-                string.Join(Environment.NewLine, latestEngagementMetrics.Select(row => row.AsCsvRow()));
-
-            AllTitleReports = new Dictionary<string, string>();
-            AllTitleReports.Add("DailyOverviewReport", dailyOverviewReport);
-            AllTitleReports.Add("RollingThirtyDayOverviewReport", rollingThirtyDayOverviewReport);
-            AllTitleReports.Add("DailyTopItemsReportRecord", dailyTopItemsReportRecord);
-            AllTitleReports.Add("ThirtyDayRetentionReportRecord", thirtyDayRetentionReportRecord);
-            AllTitleReports.Add("EngagementMetricsRollupReport", engagementMetricsRollupReport);
+            GameReport gameEngagementRollupReport = (await reportDataFetcher.FetchByQueryAsync(
+                 $"SELECT TOP 1 * FROM c WHERE c.TitleId='{titleId}' and c.ReportName='EngagementMetricsRollupReportCSV' ORDER BY c.ReportDate DESC",
+                cancellationToken)).FirstOrDefault();
+            latestReports.Add(gameEngagementRollupReport.ReportName, gameEngagementRollupReport);
         }
 
-        foreach (var item in AllTitleReports)
+        // Report 1 - Daily Overview Report
+        PlayFabReportColumn[] dailyOverviewReportColumns = new[]
         {
-            await kernel.Memory.SaveInformationAsync(
+                new PlayFabReportColumn { Name = "Timestamp", Description = "The date and time of a one-hour window when the report was compiled, presented in Coordinated Universal Time (UTC)." },
+                new PlayFabReportColumn { Name = "TotalLogins", Description = "The aggregate count of player logins during the specified hour, revealing the volume of player interactions." },
+                new PlayFabReportColumn { Name = "UniqueLogins", Description = "The distinct number of players who logged into the game within the same hour, indicating individual engagement." },
+                new PlayFabReportColumn { Name = "UniquePayers", Description = "The count of unique players who conducted in-game purchases, reflecting the game's monetization reach." },
+                new PlayFabReportColumn { Name = "Revenue", Description = "The cumulative revenue in dollars generated from in-game purchases throughout the hour, demonstrating financial performance." },
+                new PlayFabReportColumn { Name = "Purchases", Description = "The total number of in-game transactions carried out by players in the specified hour." },
+                // new PlayFabReportColumn { Name = "TotalCalls", Description = "The collective sum of player-initiated interactions, encompassing gameplay actions, API requests, and more." },
+                // new PlayFabReportColumn { Name = "TotalSuccessfulCalls", Description = "The count of interactions that succeeded without encountering errors, highlighting player satisfaction." },
+                // new PlayFabReportColumn { Name = "TotalErrors", Description = "The overall number of errors encountered during interactions, potential indicators of player experience challenges." },
+                new PlayFabReportColumn { Name = "Arpu", Description = "Average Revenue Per User, The average revenue generated per unique player, calculated as Revenue / UniquePayers." },
+                new PlayFabReportColumn { Name = "Arppu", Description = "Average Revenue Per Paying User. The average revenue generated per player who made purchases, calculated as Revenue / UniquePayers." },
+                new PlayFabReportColumn { Name = "AvgPurchasePrice", Description = "The average price of in-game purchases made by players, calculated as Revenue / Purchases." },
+                new PlayFabReportColumn { Name = "NewUsers", Description = "The count of new players who started engaging with the game during the specified hour period." },
+            };
+
+        PlayFabReport dailyOverviewReport = new()
+        {
+            Columns = dailyOverviewReportColumns,
+            Description = "Granular single day data capturing game reports for each hour. The report has 24 rows where every row reprsents one hour of the day.",
+            CsvData = PlayFabReport.CreateCsvReportFromJsonArray(latestReports["DailyOverviewReport"].ReportData, dailyOverviewReportColumns),
+            ReportName = "DailyOverviewReport"
+        };
+
+        // Report 2 - Rolling 30 Day Overview Report
+        PlayFabReportColumn[] rollingThirtyDayOverviewReportColumns = new[]
+        {
+                new PlayFabReportColumn { Name = "Timestamp", Description = "The date and time of a one-hour window when the report was compiled, presented in Coordinated Universal Time (UTC)." },
+                new PlayFabReportColumn { Name = "TotalLogins", Description = "The aggregate count of player logins during the specified hour, revealing the volume of player interactions." },
+                new PlayFabReportColumn { Name = "UniqueLogins", Description = "The distinct number of players who logged into the game within the same hour, indicating individual engagement." },
+                new PlayFabReportColumn { Name = "UniquePayers", Description = "The count of unique players who conducted in-game purchases, reflecting the game's monetization reach." },
+                new PlayFabReportColumn { Name = "Revenue", Description = "The cumulative revenue in dollars generated from in-game purchases throughout the hour, demonstrating financial performance." },
+                new PlayFabReportColumn { Name = "Purchases", Description = "The total number of in-game transactions carried out by players in the specified hour." },
+                // new PlayFabReportColumn { Name = "TotalCalls", Description = "The collective sum of player-initiated interactions, encompassing gameplay actions, API requests, and more." },
+                // new PlayFabReportColumn { Name = "TotalSuccessfulCalls", Description = "The count of interactions that succeeded without encountering errors, highlighting player satisfaction." },
+                // new PlayFabReportColumn { Name = "TotalErrors", Description = "The overall number of errors encountered during interactions, potential indicators of player experience challenges." },
+                new PlayFabReportColumn { Name = "Arpu", Description = "Average Revenue Per User. The average revenue generated per unique player, calculated as Revenue / UniquePayers." },
+                new PlayFabReportColumn { Name = "Arppu", Description = "Average Revenue Per Paying User. The average revenue generated per player who made purchases, calculated as Revenue / UniquePayers." },
+                new PlayFabReportColumn { Name = "AvgPurchasePrice", Description = "The average price of in-game purchases made by players, calculated as Revenue / Purchases." },
+                new PlayFabReportColumn { Name = "NewUsers", Description = "The count of new players who started engaging with the game during the specified hour period." },
+            };
+
+        PlayFabReport rollingThirtyDayOverviewReport = new()
+        {
+            Columns = rollingThirtyDayOverviewReportColumns,
+            Description = "Daily data for the last 30 days capturing game reports for each day. The report has 30 rows where every row reprsents one the day of the last 30 days.",
+            CsvData = PlayFabReport.CreateCsvReportFromJsonArray(latestReports["RollingThirtyDayOverviewReport"].ReportData, rollingThirtyDayOverviewReportColumns),
+            ReportName = "RollingThirtyDayOverviewReport"
+        };
+
+        // Report 3 - Daily Top Items Report
+        string ParseItemName(string str) => str.Replace("[\"", "").Replace("\"]", "");
+        PlayFabReportColumn[] dailyTopItemsReportColumns = new[]
+        {
+                new PlayFabReportColumn { Name = "ItemName", SourceParser=ParseItemName, Description = "The name of the product, representing a distinct item available for purchase." },
+                new PlayFabReportColumn { Name = "TotalSales", Description = "The cumulative count of sales for the specific item, indicating its popularity and market demand." },
+                new PlayFabReportColumn { Name = "TotalRevenue", Description = "The total monetary value of revenue generated from sales of the item in US dollars." },
+            };
+
+        PlayFabReport dailyTopItemsReport = new()
+        {
+            Columns = dailyTopItemsReportColumns,
+            Description = "The dataset provides an of a sales reports for last day, delivering total sales and total revenue for individual products.",
+            CsvData = PlayFabReport.CreateCsvReportFromJsonArray(latestReports["DailyTopItemsReport"].ReportData, dailyTopItemsReportColumns),
+            ReportName = "DailyTopItemsReport"
+        };
+
+        // Report 4 - Rolling 30 Day Retention Report
+        string ParseDailyReportDate(string str) => DateTime.Parse(str, CultureInfo.InvariantCulture).ToString("yyyy/MM/dd", CultureInfo.InvariantCulture);
+        PlayFabReportColumn[] thirtyDayRetentionReportColumns = new[]
+        {
+                new PlayFabReportColumn { Name = "CohortDate", SourceName="Ts", SourceParser=ParseDailyReportDate, Description = "The timestamp indicating when the retention data was collected" },
+                new PlayFabReportColumn { Name = "CohortSize", Description = "The initial size of the cohort, representing the number of players at the beginning of the retention period." },
+                new PlayFabReportColumn { Name = "DaysLater", SourceName="PeriodsLater", Description = "The number of days later at which the retention is being measured." },
+                new PlayFabReportColumn { Name = "TotalRetained", Description = "The total number of players retained in the specified cohort after the specified number of days." },
+                new PlayFabReportColumn { Name = "PercentRetained", Description = "The percentage of players retained in the cohort after the specified number of days." },
+            };
+
+        PlayFabReport thirtyDayRetentionReport = new()
+        {
+            Columns = thirtyDayRetentionReportColumns,
+            Description = "Retention report for daily cohorts of players in the last 30 days.",
+            CsvData = PlayFabReport.CreateCsvReportFromJsonArray(latestReports["ThirtyDayRetentionReport"].ReportData, thirtyDayRetentionReportColumns),
+            ReportName = "ThirtyDayRetentionReport"
+        };
+
+        // Report 5 - Engagement Mertics Report
+        PlayFabReportColumn[] engagementMetricsRollupReportColumns = new[]
+        {
+                new PlayFabReportColumn { Name = "ReportDate", Description = "The date for the week for which the data is recorded." },
+                new PlayFabReportColumn { Name = "Region", Description = "The geographic region to which the data pertains. Examples include Greater China, France, Japan, United Kingdom, United States, Latin America, India, Middle East & Africa, Germany, Canada, Western Europe, Asia Pacific, and Central & Eastern Europe. 'All' is a special region which means this rows aggregates data across all the other regions" },
+                new PlayFabReportColumn { Name = "MonthlyActiveUsers", Description = "The total number of unique users who engaged with the game at least once during the month." },
+                new PlayFabReportColumn { Name = "DailyActiveUsers", Description = "The total number of unique users who engaged with the game on that week." },
+                new PlayFabReportColumn { Name = "NewPlayers", Description = "The number of new users who joined and engaged with the game on that week." },
+                new PlayFabReportColumn { Name = "Retention1Day", Description = "The percentage of users who returned to the game on the day after their first engagement." },
+                new PlayFabReportColumn { Name = "Retention7Day", Description = "The percentage of users who returned to the game seven days after their first engagement." },
+            };
+
+        PlayFabReport engagementMetricsRollupReport = new()
+        {
+            Columns = engagementMetricsRollupReportColumns,
+            Description = """
+Weekly aggregated data related to the user activity and retention for the last 30 days.
+Data is broken down by different geographic regions, including France, Greater China, Japan, United Kingdom, United States, Latin America, India, Middle East & Africa, Germany, Canada, Western Europe, Asia Pacific, and Central & Eastern Europe.
+There is a special row for each week with the Region set to 'All', which means this row aggregates data across all the regions for that week.
+""",
+            CsvData = string.Join(
+                Environment.NewLine,
+                latestReports["EngagementMetricsRollupReportCSV"].ReportData
+                    .Split("\"", StringSplitOptions.RemoveEmptyEntries)
+                    .Where(line => line != ",")
+                    .Select(line => line.Split(",", StringSplitOptions.RemoveEmptyEntries))
+                    .Where(row => row[2] == "All" && row[4] == "All") // Platform and Segment
+                    .Select(row => $"{ParseDailyReportDate(row[1])},{row[3]},{row[5]},{row[6]},{row[7]},{row[11]},{row[12]}")
+                    .ToList()),
+            ReportName = "EngagementMetricsRollupReport"
+        };
+
+        var playFabReports = new PlayFabReport[]
+        {
+            dailyOverviewReport,
+            rollingThirtyDayOverviewReport,
+            dailyTopItemsReport,
+            thirtyDayRetentionReport,
+            engagementMetricsRollupReport
+        };
+
+        foreach (PlayFabReport report in playFabReports)
+        {
+            string reportText = report.GetDetailedDescription();
+            await memory.SaveInformationAsync(
                 collection: "TitleID-Reports",
-                text: item.Value,
-                id: item.Key,
+                text: reportText,
+                id: report.ReportName,
+                additionalMetadata: JsonConvert.SerializeObject(report, Formatting.None),
                 cancellationToken: cancellationToken);
         }
-    }
+    } 
+    #endregion
 }
