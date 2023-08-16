@@ -7,6 +7,7 @@ using PlayFabExamples.Common.Configuration;
 using PlayFabExamples.Common.Logging;
 
 namespace PlayFabExamples.Example02_Generative;
+
 public static class Example02_Generative
 {
     public static async Task RunAsync()
@@ -26,7 +27,7 @@ public static class Example02_Generative
         {
             try
             {
-                var text = await new SegmentSkill().CreateSegmentUsingOpenAPI(prompt);
+                await CreateSegmentExample(prompt);
                 Console.WriteLine();
             }
             catch (Exception ex)
@@ -58,7 +59,6 @@ public static class Example02_Generative
         // The planner returns a plan, consisting of a single function
         // to execute and achieve the goal requested.
         var plan = await planner.CreatePlanAsync(goal);
-        plan.Steps[0].Parameters = plan.Parameters;
 
         // Execute the full plan (which is a single function)
         SKContext result = await plan.InvokeAsync(kernel.CreateNewContext());

@@ -13,19 +13,19 @@ using PlayFabExamples.Common.Logging;
 namespace PlayFabExamples.Example02_Generative;
 
 /// <summary>
-/// Create a segment with given information.
+/// Create a segment for given input prompt / question.
 /// </summary>
 public sealed class SegmentSkill
 {
     /// <summary>
-    /// Create a segment using playfab open api json content.
+    /// Create segment function for given input prompt / question.
     /// </summary>
-    /// <param name="inputPrompt">Input prompt.</param>
+    /// <param name="inputPrompt">Input prompt for create segment skill.</param>
     /// <returns>Status of segment creation.</returns>
-    public async Task<string> CreateSegmentUsingOpenAPI(string inputPrompt)
+    [SKFunction, Description("Create segment for given input prompt / question.")]
+    public async Task<string> CreateSegment(string inputPrompt)
     {
         // Step 1: Generate payload content to create a segment.
-        Console.WriteLine(inputPrompt);
         var kernel = new KernelBuilder().WithLogger(ConsoleLogger.Logger)
             .WithAzureChatCompletionService(TestConfiguration.AzureOpenAI.ChatDeploymentName, TestConfiguration.AzureOpenAI.Endpoint, TestConfiguration.AzureOpenAI.ApiKey, alsoAsTextCompletion: true, setAsDefault: true)
             .Build();
@@ -70,9 +70,9 @@ Question:
 {{$input}}"
 .Replace("{{$apiSpec}}", miniJson, StringComparison.OrdinalIgnoreCase);
 
-        var playfabJsonFunction = kernel.CreateSemanticFunction(FunctionDefinition, temperature: 0.1, topP: 0.1);
-        var result = await playfabJsonFunction.InvokeAsync(inputPrompt);
-        var payload = result.Result.Substring(result.Result.IndexOf('{'), result.Result.LastIndexOf('}') - result.Result.IndexOf('{') + 1);
+        ISKFunction playfabJsonFunction = kernel.CreateSemanticFunction(FunctionDefinition, temperature: 0.1, topP: 0.1);
+        SKContext result = await playfabJsonFunction.InvokeAsync(inputPrompt);
+        string payload = result.Result.Substring(result.Result.IndexOf('{'), result.Result.LastIndexOf('}') - result.Result.IndexOf('{') + 1);
         Console.WriteLine(payload);
 
         // Step 2: Create a segment using above generated payload.
@@ -83,10 +83,10 @@ Question:
         contextVariables.Set("payload", payload);
 
         using HttpClient httpClient = new();
-        var playfabApiSkills = await GetPlayFabSkill(kernel, httpClient);
-        var result2 = await kernel.RunAsync(contextVariables, playfabApiSkills["CreateSegment"]);
+        IDictionary<string, ISKFunction> playfabApiSkills = await GetPlayFabSkill(kernel, httpClient);
+        SKContext result2 = await kernel.RunAsync(contextVariables, playfabApiSkills["CreateSegment"]);
 
-        var formattedContent = JsonConvert.SerializeObject(JsonConvert.DeserializeObject(result2.Result), Formatting.Indented);
+        string formattedContent = JsonConvert.SerializeObject(JsonConvert.DeserializeObject(result2.Result), Formatting.Indented);
         Console.WriteLine("\nCreateSegment playfabApiSkills response: \n{0}", formattedContent);
 
         return $"Segment created successfully";
@@ -108,74 +108,6 @@ Question:
 
         var playfabOpenAPIContent = File.ReadAllText(playfabApiFile);
         return Task.FromResult(JsonConvert.SerializeObject(JsonConvert.DeserializeObject(playfabOpenAPIContent), Formatting.None));
-    }
-
-    /// <summary>
-    /// Read a file
-    /// </summary>
-    /// <example>
-    /// {{file.readAsync $path }} => "hello world"
-    /// </example>
-    /// <param name="path"> Source file </param>
-    /// <returns> File content </returns>
-    [SKFunction, Description("Create a segment using prompt and parsing prompt")]
-    public async Task<string> CreateSegment([Description("Name of the segment.")] string segmentname,
-        [Description("Name of the segment definition. Some of the examples are FirstLoginDateFilter, LastLoginDateFilter, LocationFilter.")] string segmentdefinition,
-        [Description("Name of the segment comparison. Some of the examples are GreaterThan, LessThan, Equals.")] string segmentcomparison,
-        [Description("Value of the segment comparison. Some of the examples are 2023-08-01, India, Australia, Kenya. For country get 2 letter country code instead of country name.")] string segmentcomparisonvalue,
-        [Description("Name of the segment action. Examples are GrantVirtualCurrencyAction, EmailNotificationAction. This is empty if there is no segment action.")] string segmentaction,
-        [Description("Name of the segment action key or code. Examples are virtual currency code, email template id. This is empty if there is no segment action.")] string segmentactioncode,
-        [Description("Name of the segment action key value or code value. Examples are template name, virtual currency amount. This is empty if there is no segment action.")] string segmentactionvalue
-        )
-    {
-        //ToDo: Create payload json using Playfab dlls/sdk
-        // Set properties to create a Segment using swagger.json
-        ContextVariables contextVariables = new();
-        contextVariables.Set("content_type", "application/json");
-        contextVariables.Set("server_url", TestConfiguration.PlayFab.Endpoint);
-        string segmentPayload = GetSegmentPayload(segmentname, segmentdefinition, segmentcomparison, segmentcomparisonvalue, segmentaction, segmentactioncode, segmentactionvalue);
-
-        contextVariables.Set("payload", segmentPayload);
-        var kernel = new KernelBuilder().WithLogger(ConsoleLogger.Logger).Build();
-        using HttpClient httpClient = new();
-        var playfabApiSkills = await GetPlayFabSkill(kernel, httpClient);
-
-        // Run operation via the semantic kernel
-        var result2 = await kernel.RunAsync(contextVariables, playfabApiSkills["CreateSegment"]);
-
-        Console.WriteLine("\n\n\n");
-        var formattedContent = JsonConvert.SerializeObject(JsonConvert.DeserializeObject(result2.Result), Formatting.Indented);
-        Console.WriteLine("CreateSegment playfabApiSkills response: \n{0}", formattedContent);
-
-        return $"Segment {segmentname} created with segment definition {segmentdefinition}";
-    }
-
-    private static string GetSegmentPayload(string segmentname, string segmentdefinition, string segmentcomparison, string segmentcomparisonvalue, string segmentaction, string segmentactioncode, string segmentactionvalue)
-    {
-        //ToDo: Need to explore and replace this logic with open ai chat.
-        string segmentPayload = "{\n  \"SegmentModel\": {\n \"Name\": \"<SegmentName>\",\n \"SegmentOrDefinitions\": [\n {\n \"SegmentAndDefinitions\": [\n {\n \"<SegmentDefinition>\": {\n \"LogInDate\": \"<SegmentComparisonValue>T00:00:00Z\",\n \"Comparison\": \"<SegmentComparison>\"\n }\n }\n ]\n }\n ]\n <EnteredSegmentAction> }\n }";
-        string locationPayload = "{\n  \"SegmentModel\": {\n \"Name\": \"<SegmentName>\",\n \"SegmentOrDefinitions\": [\n {\n \"SegmentAndDefinitions\": [\n {\n \"<SegmentDefinition>\": {\n \"CountryCode\": \"<SegmentComparisonValue>\",\n \"Comparison\": \"<SegmentComparison>\"\n }\n }\n ]\n }\n ]\n <EnteredSegmentAction> }\n }";
-
-        if (segmentdefinition == "LocationFilter")
-        {
-            segmentPayload = locationPayload;
-        }
-
-        if (!string.IsNullOrEmpty(segmentaction) && segmentaction == "GrantVirtualCurrencyAction")
-        {
-            string enteredSegmentAction = $", \"EnteredSegmentActions\": [\n {{\n \"GrantVirtualCurrencyAction\": {{\n \"CurrencyCode\": \"{segmentactioncode}\",\n \"Amount\": {segmentactionvalue}\n }}\n }}\n ]";
-            segmentPayload = segmentPayload.Replace("<EnteredSegmentAction>", enteredSegmentAction);
-        }
-        else
-        {
-            segmentPayload = segmentPayload.Replace("<EnteredSegmentAction>", string.Empty);
-        }
-
-        segmentPayload = segmentPayload.Replace("<SegmentName>", segmentname);
-        segmentPayload = segmentPayload.Replace("<SegmentDefinition>", segmentdefinition);
-        segmentPayload = segmentPayload.Replace("<SegmentComparison>", segmentcomparison);
-        segmentPayload = segmentPayload.Replace("<SegmentComparisonValue>", segmentcomparisonvalue);
-        return segmentPayload;
     }
 
     private static async Task<IDictionary<string, ISKFunction>> GetPlayFabSkill(IKernel kernel, HttpClient httpClient)

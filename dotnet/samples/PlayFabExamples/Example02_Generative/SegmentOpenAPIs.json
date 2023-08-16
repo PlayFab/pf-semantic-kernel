@@ -14,7 +14,7 @@
   },
   "servers": [
     {
-      "url": "https://<titleid>.playfabapi.com",
+      "url": "https://titleid.playfabapi.com",
       "description": "The endpoint for PlayFab title-scoped APIs."
     }
   ],
