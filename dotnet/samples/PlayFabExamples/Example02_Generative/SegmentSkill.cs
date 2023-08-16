@@ -7,6 +7,7 @@ using Microsoft.SemanticKernel.SkillDefinition;
 using Microsoft.SemanticKernel.Skills.OpenAPI.Authentication;
 using Microsoft.SemanticKernel.Skills.OpenAPI.Extensions;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using PlayFabExamples.Common.Configuration;
 using PlayFabExamples.Common.Logging;
 
@@ -73,14 +74,15 @@ Question:
         ISKFunction playfabJsonFunction = kernel.CreateSemanticFunction(FunctionDefinition, temperature: 0.1, topP: 0.1);
         SKContext result = await playfabJsonFunction.InvokeAsync(inputPrompt);
         string payload = result.Result.Substring(result.Result.IndexOf('{'), result.Result.LastIndexOf('}') - result.Result.IndexOf('{') + 1);
-        Console.WriteLine(payload);
+        string newPayload = await GenerateDistinctSegmentName(payload);
+        Console.WriteLine(newPayload);
 
         // Step 2: Create a segment using above generated payload.
         ContextVariables contextVariables = new();
         contextVariables.Set("content_type", "application/json");
         contextVariables.Set("server_url", TestConfiguration.PlayFab.Endpoint);
         contextVariables.Set("content_type", "application/json");
-        contextVariables.Set("payload", payload);
+        contextVariables.Set("payload", newPayload);
 
         using HttpClient httpClient = new();
         IDictionary<string, ISKFunction> playfabApiSkills = await GetPlayFabSkill(kernel, httpClient);
@@ -108,6 +110,61 @@ Question:
 
         var playfabOpenAPIContent = File.ReadAllText(playfabApiFile);
         return Task.FromResult(JsonConvert.SerializeObject(JsonConvert.DeserializeObject(playfabOpenAPIContent), Formatting.None));
+    }
+
+    /// <summary>
+    /// Get current title segments.
+    /// </summary>
+    /// <returns>List of segments.</returns>
+    private async Task<List<Segment>> GetSegments()
+    {
+        var kernel = new KernelBuilder().WithLogger(ConsoleLogger.Logger).Build();
+        ContextVariables contextVariables = new();
+        contextVariables.Set("content_type", "application/json");
+        contextVariables.Set("server_url", TestConfiguration.PlayFab.Endpoint);
+        contextVariables.Set("content_type", "application/json");
+        contextVariables.Set("payload", "{ \"SegmentIds\": [] }");
+
+        using HttpClient httpClient = new();
+        IDictionary<string, ISKFunction> playfabApiSkills = await GetPlayFabSkill(kernel, httpClient);
+        SKContext result = await kernel.RunAsync(contextVariables, playfabApiSkills["GetSegments"]);
+
+        string formattedContent = JsonConvert.SerializeObject(JsonConvert.DeserializeObject(result.Result), Formatting.Indented);
+        JObject segmentsDataObject = JObject.Parse(formattedContent);
+        string? content = ((Newtonsoft.Json.Linq.JValue)segmentsDataObject.GetValue("content")).Value.ToString();
+        JObject segmentsDataObject2 = JObject.Parse(content);
+        string segmentsArrayContent = segmentsDataObject2.GetValue("data").SelectTokens("$.Segments").First().ToString();
+       return System.Text.Json.JsonSerializer.Deserialize<List<Segment>>(segmentsArrayContent);
+    }
+
+    /// <summary>
+    /// To create a segment, segment name should be disitinct.
+    /// </summary>
+    /// <param name="payload">Segment creation payload.</param>
+    /// <returns>Updated payload.</returns>
+    private async Task<string> GenerateDistinctSegmentName(string payload)
+    {
+        var segments = await GetSegments();
+        string segmentsString = string.Join("\n ", segments.Select(segment => segment.Name.Trim()));
+
+        string FunctionDefinition = @"Update the payload segment model name in the below payload json with unique name and name should not be in the below list.
+{{segmentList}}
+
+Payload:
+{{payload}}
+
+{{$input}}"
+.Replace("{{payload}}", payload, StringComparison.OrdinalIgnoreCase)
+.Replace("{{segmentList}}", segmentsString, StringComparison.OrdinalIgnoreCase);
+
+        var kernel = new KernelBuilder().WithLogger(ConsoleLogger.Logger)
+            .WithAzureChatCompletionService(TestConfiguration.AzureOpenAI.ChatDeploymentName, TestConfiguration.AzureOpenAI.Endpoint, TestConfiguration.AzureOpenAI.ApiKey, alsoAsTextCompletion: true, setAsDefault: true)
+            .Build();
+        ISKFunction playfabJsonFunction = kernel.CreateSemanticFunction(FunctionDefinition, temperature: 0.1, topP: 0.1);
+        SKContext result = await playfabJsonFunction.InvokeAsync("Update payload segment model json by distinct segment name.");
+        string newPayload = result.Result.Substring(result.Result.IndexOf('{'), result.Result.LastIndexOf('}') - result.Result.IndexOf('{') + 1);
+
+        return newPayload;
     }
 
     private static async Task<IDictionary<string, ISKFunction>> GetPlayFabSkill(IKernel kernel, HttpClient httpClient)
