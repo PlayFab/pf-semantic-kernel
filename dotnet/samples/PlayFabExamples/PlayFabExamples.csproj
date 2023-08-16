@@ -33,5 +33,10 @@
     <ProjectReference Include="..\..\src\Skills\Skills.OpenAPI\Skills.OpenAPI.csproj" />
     <ProjectReference Include="..\..\src\SemanticKernel\SemanticKernel.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="Example02_Generative\SegmentOpenAPIs.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 
 </Project>
