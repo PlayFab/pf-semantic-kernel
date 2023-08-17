@@ -134,7 +134,8 @@ Question:
         string? content = ((Newtonsoft.Json.Linq.JValue)segmentsDataObject.GetValue("content")).Value.ToString();
         JObject segmentsDataObject2 = JObject.Parse(content);
         string segmentsArrayContent = segmentsDataObject2.GetValue("data").SelectTokens("$.Segments").First().ToString();
-       return System.Text.Json.JsonSerializer.Deserialize<List<Segment>>(segmentsArrayContent);
+
+        return System.Text.Json.JsonSerializer.Deserialize<List<Segment>>(segmentsArrayContent);
     }
 
     /// <summary>
@@ -144,7 +145,7 @@ Question:
     /// <returns>Updated payload.</returns>
     private async Task<string> GenerateDistinctSegmentName(string payload)
     {
-        var segments = await GetSegments();
+        List<Segment> segments = await GetSegments();
         string segmentsString = string.Join("\n ", segments.Select(segment => segment.Name.Trim()));
 
         string FunctionDefinition = @"Update the payload segment model name in the below payload json with unique name and name should not be in the below list.
